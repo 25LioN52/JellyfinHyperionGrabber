@@ -1,4 +1,4 @@
 # Docs toolchain (see docs/development/adr/0005-documentation-tooling.md). Dependabot keeps it current.
-mkdocs-material==9.7.6
+mkdocs-material==9.7.7
 # MkDocs 2.0 removes the plugin and theme system Material depends on; stay on 1.x until we move to Zensical.
 mkdocs>=1.6,<2
