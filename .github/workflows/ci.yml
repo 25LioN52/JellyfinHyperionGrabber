@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  SOLUTION: Jellyfin.Plugin.HyperionGrabber.slnx
+
+jobs:
+  build:
+    name: Build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          # net9.0 tests need the .NET 9 runtime; global.json selects the .NET 10 SDK.
+          dotnet-version: 9.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION }}
+
+      - name: Check formatting
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet format ${{ env.SOLUTION }} --verify-no-changes --no-restore
+
+      - name: Build (warnings are errors)
+        run: dotnet build ${{ env.SOLUTION }} -c Release --no-restore
+
+      - name: Test (Jellyfin 10.11 and 12 builds)
+        run: >
+          dotnet test --solution ${{ env.SOLUTION }} -c Release --no-build
+          --results-directory TestResults --report-trx
+          --coverage --coverage-output-format cobertura
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: TestResults
+          if-no-files-found: ignore
+
+  package:
+    name: Package plugin
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+          global-json-file: global.json
+
+      - name: Build plugin zips
+        shell: pwsh
+        run: ./build/package.ps1 -Version (Get-Content version.txt -Raw).Trim()
+
+      - name: Upload plugin zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ github.sha }}
+          path: |
+            artifacts/*.zip
+            artifacts/manifest-versions.json
+          if-no-files-found: error

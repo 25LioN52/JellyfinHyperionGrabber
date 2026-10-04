@@ -1,0 +1,36 @@
+# Local test bed: Jellyfin 10.11 and Jellyfin 12 side by side, each with the matching plugin build mounted.
+#
+#   pwsh ./build/package.ps1 -Version 0.0.0
+#   docker compose -f build/docker-compose.dev.yml up
+#
+# Then open http://localhost:8096 (10.11) and http://localhost:8097 (12), finish the setup wizard, and go to
+# Dashboard -> Plugins -> Hyperion Grabber. A Hyperion running on this machine is reachable from the containers as
+# host.docker.internal. Re-run package.ps1 and restart the containers to load a new build.
+# See docs/development/building.md.
+
+name: hyperion-grabber-dev
+
+services:
+  jellyfin-10-11:
+    image: jellyfin/jellyfin:10.11.11
+    ports:
+      - "8096:8096"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - jellyfin-10-11-config:/config
+      - ../artifacts/stage/net9.0:/config/plugins/Hyperion Grabber_0.0.0.0
+
+  jellyfin-12:
+    image: jellyfin/jellyfin:12.1.0
+    ports:
+      - "8097:8096"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - jellyfin-12-config:/config
+      - ../artifacts/stage/net10.0:/config/plugins/Hyperion Grabber_0.0.0.1
+
+volumes:
+  jellyfin-10-11-config:
+  jellyfin-12-config:

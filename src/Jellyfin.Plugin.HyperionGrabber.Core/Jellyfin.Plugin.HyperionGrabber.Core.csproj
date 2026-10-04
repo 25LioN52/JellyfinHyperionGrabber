@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Host-independent engine: Hyperion/HyperHDR client, test patterns and (later) the frame pipeline and sync engine.
+    MUST NOT reference any Jellyfin package. See docs/development/architecture.md.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Jellyfin.Plugin.HyperionGrabber.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Provided by the Jellyfin host at runtime; only Microsoft.Extensions.Logging.Abstractions is used. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Jellyfin.Plugin.HyperionGrabber.Core.Tests" />
+    <InternalsVisibleTo Include="Jellyfin.Plugin.HyperionGrabber.TestSupport" />
+  </ItemGroup>
+
+</Project>

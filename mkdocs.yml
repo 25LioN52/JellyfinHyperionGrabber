@@ -1,0 +1,98 @@
+site_name: Hyperion Grabber for Jellyfin
+site_description: Ambient lighting for Jellyfin - stream the playing video to Hyperion.ng or HyperHDR.
+site_url: https://25lion52.github.io/JellyfinHyperionGrabber/
+repo_url: https://github.com/25LioN52/JellyfinHyperionGrabber
+repo_name: 25LioN52/JellyfinHyperionGrabber
+edit_uri: edit/main/docs/
+copyright: GPL-3.0 &middot; Not affiliated with Jellyfin, Hyperion, HyperHDR, WLED or Philips.
+
+theme:
+  name: material
+  icon:
+    logo: material/television-ambient-light
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.keys
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+validation:
+  links:
+    absolute_links: relative_to_docs
+    anchors: warn
+    unrecognized_links: warn
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - User guide:
+      - Installation: user-guide/installation.md
+      - Configuration: user-guide/configuration.md
+      - Hyperion.ng & HyperHDR setup: user-guide/hyperion-setup.md
+      - Troubleshooting: user-guide/troubleshooting.md
+      - FAQ: user-guide/faq.md
+  - How it works: how-it-works.md
+  - Compatibility: compatibility.md
+  - Roadmap: roadmap.md
+  - Development:
+      - development/index.md
+      - Building & running: development/building.md
+      - Architecture: development/architecture.md
+      - Hyperion protocol: development/hyperion-protocol.md
+      - Jellyfin integration: development/jellyfin-integration.md
+      - Testing: development/testing.md
+      - Releasing: development/releasing.md
+      - Repository setup: development/repository-setup.md
+      - Working with AI agents: development/ai-agents.md
+      - Decisions (ADRs):
+          - development/adr/index.md
+          - 0001 Server-side decoding: development/adr/0001-server-side-decoding.md
+          - 0002 FlatBuffers transport: development/adr/0002-flatbuffers-transport.md
+          - 0003 Jellyfin version support: development/adr/0003-jellyfin-version-support.md
+          - 0004 Core library boundary: development/adr/0004-core-library-boundary.md
+          - 0005 Documentation tooling: development/adr/0005-documentation-tooling.md
+          - 0006 Release automation: development/adr/0006-release-automation.md

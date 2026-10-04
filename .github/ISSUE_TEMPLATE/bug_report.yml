@@ -1,0 +1,89 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please check the [troubleshooting guide](https://25lion52.github.io/JellyfinHyperionGrabber/user-guide/troubleshooting/) first.
+        The details below let us reproduce the problem without a round of questions.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Dashboard → Plugins → Hyperion Grabber (for example 0.2.0.1).
+    validations:
+      required: true
+
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Jellyfin server version and installation
+      placeholder: 12.1.0 in Docker (jellyfin/jellyfin) on a UGREEN DXP4800 Plus
+    validations:
+      required: true
+
+  - type: dropdown
+    id: hyperion
+    attributes:
+      label: Lighting server
+      options:
+        - Hyperion.ng
+        - HyperHDR
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: hyperion-version
+    attributes:
+      label: Hyperion.ng / HyperHDR version and LED devices
+      placeholder: Hyperion 2.2.1, WLED 90 LEDs + Philips Hue
+    validations:
+      required: true
+
+  - type: input
+    id: client
+    attributes:
+      label: Jellyfin client used for playback
+      placeholder: Kodi 22 + Jellyfin for Kodi on LibreELEC (Raspberry Pi 5)
+
+  - type: dropdown
+    id: hwaccel
+    attributes:
+      label: Jellyfin hardware acceleration (Dashboard → Playback → Transcoding)
+      options:
+        - None
+        - Intel QuickSync (QSV)
+        - VA-API
+        - NVIDIA NVENC
+        - AMD AMF
+        - Apple VideoToolbox
+        - Rockchip RKMPP
+        - Not sure
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Jellyfin log lines mentioning "HyperionGrabber" (Dashboard → Logs). Remove anything private.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: '"Send test pattern" on the plugin page works (or I describe what it shows above).'
+        - label: I searched existing issues.
+          required: true

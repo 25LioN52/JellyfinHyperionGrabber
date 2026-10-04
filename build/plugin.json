@@ -1,0 +1,12 @@
+{
+  "guid": "501879a2-6653-4450-b66c-73ba37aa6e3f",
+  "name": "Hyperion Grabber",
+  "overview": "Ambient lighting: streams the video you are watching to Hyperion.ng or HyperHDR",
+  "description": "Decodes the video that is playing on any Jellyfin client and streams small frames to Hyperion.ng or HyperHDR over FlatBuffers, so your LEDs (WLED, Philips Hue and everything else Hyperion supports) follow the picture. LED layout, colors and smoothing stay in Hyperion. Works with any client, including Kodi on LibreELEC, Android TV, webOS, Tizen and browsers; no HDMI capture hardware needed.",
+  "owner": "25LioN52",
+  "category": "General",
+  "artifacts": [
+    "Jellyfin.Plugin.HyperionGrabber.dll",
+    "Jellyfin.Plugin.HyperionGrabber.Core.dll"
+  ]
+}

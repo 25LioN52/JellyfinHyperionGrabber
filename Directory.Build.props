@@ -1,0 +1,55 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in the repository.
+    The release version lives in version.txt (managed by release-please).
+  -->
+  <PropertyGroup>
+    <VersionPrefix>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.txt').Trim())</VersionPrefix>
+    <Authors>JellyfinHyperionGrabber contributors</Authors>
+    <Product>Hyperion Grabber for Jellyfin</Product>
+    <Copyright>Copyright (c) JellyfinHyperionGrabber contributors</Copyright>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/25LioN52/JellyfinHyperionGrabber</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    One codebase, one build per supported Jellyfin line (see docs/development/adr/0003-jellyfin-version-support.md).
+    JellyfinAbiFlavor becomes the 4th version component so the plugin repository can serve both builds from a
+    single manifest: Jellyfin picks the highest version whose targetAbi it supports.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <JellyfinLine>10.11</JellyfinLine>
+    <JellyfinTargetAbi>10.11.0.0</JellyfinTargetAbi>
+    <JellyfinAbiFlavor>0</JellyfinAbiFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <JellyfinLine>12</JellyfinLine>
+    <JellyfinTargetAbi>12.0.0.0</JellyfinTargetAbi>
+    <JellyfinAbiFlavor>1</JellyfinAbiFlavor>
+  </PropertyGroup>
+  <PropertyGroup>
+    <JellyfinAbiFlavor Condition="'$(JellyfinAbiFlavor)' == ''">0</JellyfinAbiFlavor>
+    <AssemblyVersion>$(VersionPrefix).$(JellyfinAbiFlavor)</AssemblyVersion>
+    <FileVersion>$(AssemblyVersion)</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)stylecop.json" Link="stylecop.json" Visible="false" />
+  </ItemGroup>
+
+</Project>

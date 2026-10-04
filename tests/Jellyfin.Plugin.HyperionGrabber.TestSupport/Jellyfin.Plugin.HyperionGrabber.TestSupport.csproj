@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared test infrastructure: a fake Hyperion FlatBuffers server that decodes traffic with the OFFICIAL
+    Google.FlatBuffers runtime, so production encoding is verified independently of our own codec.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <RootNamespace>Jellyfin.Plugin.HyperionGrabber.TestSupport</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.FlatBuffers" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Jellyfin.Plugin.HyperionGrabber.Core\Jellyfin.Plugin.HyperionGrabber.Core.csproj" />
+  </ItemGroup>
+
+</Project>
