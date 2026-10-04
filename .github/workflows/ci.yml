@@ -51,6 +51,26 @@ jobs:
           --results-directory TestResults --report-trx
           --coverage --coverage-output-format cobertura
 
+      - name: Report failed tests as annotations
+        # Annotations are readable without signing in (checks API, PR "Files changed" tab), unlike job logs,
+        # so humans and agents can see why a run failed.
+        if: failure()
+        shell: pwsh
+        run: |
+          $failed = 0
+          foreach ($trx in Get-ChildItem TestResults -Filter '*.trx' -Recurse) {
+            [xml] $doc = Get-Content $trx.FullName -Raw
+            foreach ($result in $doc.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' }) {
+              $failed++
+              $message = "$($result.Output.ErrorInfo.Message)`n$($result.Output.ErrorInfo.StackTrace)".Trim()
+              if ($message.Length -gt 3000) { $message = $message.Substring(0, 3000) + ' ...' }
+              $escaped = $message.Replace('%', '%25').Replace("`r", '').Replace("`n", '%0A')
+              Write-Output "::error title=$($result.testName) ($($trx.BaseName))::$escaped"
+              Add-Content $env:GITHUB_STEP_SUMMARY "### ``$($result.testName)`` ($($trx.BaseName))`n``````text`n$message`n```````n"
+            }
+          }
+          Write-Output "$failed failed test results reported."
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

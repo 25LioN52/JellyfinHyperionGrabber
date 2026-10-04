@@ -28,6 +28,5 @@ jobs:
             ci
             build
             chore
+          # Only the type matters to release-please. No subject case rule: Dependabot writes "deps: Bump ...".
           requireScope: false
-          subjectPattern: ^[a-z].+[^.]$
-          subjectPatternError: Start the subject with a lowercase letter and do not end it with a period.
