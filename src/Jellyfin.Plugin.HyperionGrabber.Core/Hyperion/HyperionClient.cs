@@ -174,8 +174,24 @@ public sealed partial class HyperionClient : IHyperionSink, IAsyncDisposable
             }
         }
 
-        // Closing the socket ends the receive loop and aborts a write that is still in progress.
+        // Graceful close: send FIN and keep draining replies until the server closes. Closing a socket with unread
+        // replies makes Windows send RST, and the server may then drop our last messages (the Clear) unread.
+        var wasOpen = !_closed;
         _closed = true;
+        if (wasOpen)
+        {
+            try
+            {
+                _tcpClient.Client.Shutdown(SocketShutdown.Send);
+                await _receiveLoop.WaitAsync(ClearOnDisposeTimeout).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is SocketException or ObjectDisposedException or TimeoutException)
+            {
+                // Fall through to the hard close below.
+            }
+        }
+
+        // Closing the socket ends the receive loop and aborts a write that is still in progress.
         await _lifetime.CancelAsync().ConfigureAwait(false);
         await _stream.DisposeAsync().ConfigureAwait(false);
         _tcpClient.Dispose();
