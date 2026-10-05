@@ -240,6 +240,21 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task DecodingFailure_WithADueFrame_ReturnsTheFrameToThePool()
+    {
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.Fail("FFmpeg exited with code 1 (Invalid data found).");
+
+        // The tick takes frame 1 as due, then learns that decoding failed.
+        _time.Advance(Interval);
+        await session.Completion;
+
+        Assert.Equal(0, Source.Outstanding);
+        Assert.Empty(_connection.Images);
+    }
+
+    [Fact]
     public async Task ConnectionLost_StopsDecoding()
     {
         var session = await StartStreamingAsync();

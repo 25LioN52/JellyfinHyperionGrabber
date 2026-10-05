@@ -253,29 +253,36 @@ internal sealed partial class StreamingGrabSession : IGrabSession
                     continue;
                 }
 
+                // The due frame goes back to the pool whatever happens next (a decoding failure throws below).
                 var due = TakeDueFrame(position, interval);
-                if (IsDecoderLagging(position, now))
+                bool isNewFrame;
+                try
                 {
-                    if (due is not null)
+                    if (IsDecoderLagging(position, now))
                     {
-                        due.Dispose();
-                        Interlocked.Increment(ref _framesDropped);
+                        if (due is not null)
+                        {
+                            Interlocked.Increment(ref _framesDropped);
+                        }
+
+                        await RestartSourceAsync(options).ConfigureAwait(false);
+                        continue;
                     }
 
-                    await RestartSourceAsync(options).ConfigureAwait(false);
-                    continue;
+                    isNewFrame = due is not null;
+                    if (due is not null)
+                    {
+                        due.Rgb24.Span.CopyTo(lastFrame);
+                        hasLastFrame = true;
+                    }
+                    else if (!hasLastFrame || now - lastSentAt < KeepAliveInterval)
+                    {
+                        continue;
+                    }
                 }
-
-                var isNewFrame = due is not null;
-                if (due is not null)
+                finally
                 {
-                    due.Rgb24.Span.CopyTo(lastFrame);
-                    due.Dispose();
-                    hasLastFrame = true;
-                }
-                else if (!hasLastFrame || now - lastSentAt < KeepAliveInterval)
-                {
-                    continue;
+                    due?.Dispose();
                 }
 
                 _connection ??= await _factory.Connect(plan.Hyperion, token).ConfigureAwait(false);
