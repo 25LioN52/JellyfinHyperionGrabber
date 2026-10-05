@@ -4,8 +4,22 @@
 const HyperionGrabberConfig = {
     pluginUniqueId: '501879a2-6653-4450-b66c-73ba37aa6e3f',
     minPriority: 100,
-    maxPriority: 199
+    maxPriority: 199,
+    defaultFramesPerSecond: 25,
+    maxFramesPerSecond: 60
 };
+
+function readFramesPerSecond(view) {
+    return Number.parseInt(view.querySelector('#FramesPerSecond').value, 10);
+}
+
+function validateFramesPerSecond(fps) {
+    if (!Number.isInteger(fps) || fps < 1 || fps > HyperionGrabberConfig.maxFramesPerSecond) {
+        return `Frame rate must be between 1 and ${HyperionGrabberConfig.maxFramesPerSecond}.`;
+    }
+
+    return null;
+}
 
 function readTarget(view) {
     return {
@@ -170,6 +184,7 @@ export default function (view) {
             view.querySelector('#HyperionPort').value = config.HyperionPort || 19400;
             view.querySelector('#HyperionPriority').value = config.HyperionPriority || 150;
             view.querySelector('#PlaybackEnabled').checked = config.PlaybackEnabled === true;
+            view.querySelector('#FramesPerSecond').value = config.FramesPerSecond || HyperionGrabberConfig.defaultFramesPerSecond;
             return loadClients(view, config.PlaybackDevices || [], config.PlaybackUsers || []);
         }).then(function () {
             Dashboard.hideLoadingMsg();
@@ -201,8 +216,15 @@ export default function (view) {
         }
 
         const playbackEnabled = view.querySelector('#PlaybackEnabled').checked;
+        const framesPerSecond = readFramesPerSecond(view);
         const devices = readChoices(view.querySelector('#PlaybackDeviceList'));
         const users = readChoices(view.querySelector('#PlaybackUserList'));
+        const fpsProblem = validateFramesPerSecond(framesPerSecond);
+        if (fpsProblem) {
+            showPlaybackResult(view, '✖ ' + fpsProblem);
+            return false;
+        }
+
         if (playbackEnabled && devices.length === 0) {
             showPlaybackResult(view, '✖ Select at least one device, or turn off Follow playback.');
             return false;
@@ -215,6 +237,7 @@ export default function (view) {
             config.HyperionPort = target.Port;
             config.HyperionPriority = target.Priority;
             config.PlaybackEnabled = playbackEnabled;
+            config.FramesPerSecond = framesPerSecond;
             config.PlaybackDevices = devices;
             config.PlaybackUsers = users;
             return ApiClient.updatePluginConfiguration(HyperionGrabberConfig.pluginUniqueId, config);

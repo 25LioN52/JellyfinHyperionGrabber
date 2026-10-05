@@ -36,6 +36,26 @@ Look in **Dashboard → Logs** for lines from `PlaybackMonitor`:
 - With debug logging enabled for the plugin, `Playback started on <device> (<device id>, …)` lines show every playback
   Jellyfin reports, including the ids to compare.
 
+## The lights do not follow a video
+
+When playback is recognized (`Lights follow playback on …`), the next lines in **Dashboard → Logs** say what happened:
+
+| Log line contains | Cause | Fix |
+| --- | --- | --- |
+| `Streaming 160x90 at 25 fps to Hyperion from …` | Streaming started | If the LEDs still do not change, see [Test pattern runs but the LEDs look wrong](#test-pattern-runs-but-the-leds-look-wrong): the same priority and device checks apply. |
+| `no Hyperion server is configured` | The host is empty | Enter the host on the plugin page and press **Save**. |
+| `The lights cannot follow playback: …` | A saved setting is invalid, or Jellyfin has no FFmpeg configured | Fix the named setting; check **Dashboard → Playback → Transcoding → FFmpeg path**. |
+| `The lights do not follow item … it is not a video from the library` | Live TV channel or music | Not supported: re-decoding Live TV would open a second tuner stream. |
+| `… is not a local file but a Http stream` | `.strm` file or another remote source | Not supported: only files Jellyfin reads from disk can be decoded a second time. |
+| `… folders and disc images are not supported yet` | DVD/Blu-ray folder or ISO | Remux to MKV, or wait for disc support. |
+| `… no video stream with a known size` | Jellyfin has not analyzed the file | Rescan the library (**Dashboard → Libraries → Scan All Libraries**). |
+| `Streaming to Hyperion stopped … Could not connect` / `Lost the connection` | Hyperion was unreachable or restarted | Check Hyperion; the lights come back with the next playback. Reconnecting during playback is *(planned)*. |
+| `Streaming to Hyperion stopped … FFmpeg exited with code …` | FFmpeg could not decode the file | The message includes FFmpeg's error. Hardware decoding problems fall back to the CPU by themselves (warning `Hardware decoding with … failed`). |
+
+When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` tells how it went. Many dropped frames
+mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
+hardware decoding for the video's codec in Jellyfin.
+
 ## Docker on a NAS (for example UGREEN, Synology, Unraid)
 
 - Jellyfin in a container reaches Hyperion on the same NAS through the NAS's LAN IP (bridge network) or

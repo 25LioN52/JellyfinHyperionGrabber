@@ -44,7 +44,7 @@ The last number only tells the builds apart. When you upgrade Jellyfin from 10.1
     - with the default bridge network, use the host's LAN IP (for example `192.168.1.20`), or
       `host.docker.internal` after adding `extra_hosts: ["host.docker.internal:host-gateway"]` to the Jellyfin service.
 - If Hyperion runs in another container on the same Docker network, use that container's service name.
-- *(planned)* Streaming during playback will use Jellyfin's own FFmpeg and hardware acceleration settings
+- Streaming during playback uses Jellyfin's own FFmpeg and hardware acceleration settings
   (**Dashboard → Playback → Transcoding**), including the list of codecs enabled for hardware decoding; other codecs,
   and any hardware failure, fall back to decoding on the CPU. For Intel QuickSync in Docker, pass `/dev/dri` to the
   container as described in

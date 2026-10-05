@@ -5,8 +5,9 @@
 which drive your WLED strips, Philips Hue lights and every other LED device they support.
 
 !!! note "Early preview"
-    Version 0.x connects to Hyperion/HyperHDR and plays an LED layout test pattern, so you can set everything up and
-    verify your LEDs today. **Streaming during playback** is the next milestone; see the [roadmap](roadmap.md).
+    Version 0.x streams library videos to Hyperion/HyperHDR while they play on the devices you select, and plays an
+    LED layout test pattern to set up your LEDs. Reconnecting, latency calibration and HDR tone mapping are next; see
+    the [roadmap](roadmap.md).
 
 <div class="grid cards" markdown>
 

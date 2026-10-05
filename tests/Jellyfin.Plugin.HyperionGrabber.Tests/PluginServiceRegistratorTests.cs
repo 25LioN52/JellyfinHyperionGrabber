@@ -2,10 +2,12 @@ using System.Linq;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
+using Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 using Jellyfin.Plugin.HyperionGrabber.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Playback;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Session;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,8 +29,10 @@ public class PluginServiceRegistratorTests
         using var provider = BuildProvider();
 
         Assert.Single(provider.GetServices<IHostedService>().OfType<PlaybackMonitorService>());
-        Assert.IsType<LoggingGrabSessionFactory>(provider.GetRequiredService<IGrabSessionFactory>());
+        Assert.IsType<StreamingGrabSessionFactory>(provider.GetRequiredService<IGrabSessionFactory>());
         Assert.IsType<JellyfinFfmpegSettingsProvider>(provider.GetRequiredService<IFfmpegSettingsProvider>());
+        Assert.IsType<JellyfinVideoInputResolver>(provider.GetRequiredService<IVideoInputResolver>());
+        Assert.IsType<PluginStreamingSettingsProvider>(provider.GetRequiredService<IStreamingSettingsProvider>());
         Assert.NotNull(provider.GetRequiredService<HyperionConnectionTester>());
     }
 
@@ -41,6 +45,8 @@ public class PluginServiceRegistratorTests
         services.AddSingleton(Substitute.For<ISessionManager>());
         services.AddSingleton(Substitute.For<IMediaEncoder>());
         services.AddSingleton(Substitute.For<IServerConfigurationManager>());
+        services.AddSingleton(Substitute.For<ILibraryManager>());
+        services.AddSingleton(Substitute.For<IMediaSourceManager>());
 
         new PluginServiceRegistrator().RegisterServices(services, Substitute.For<IServerApplicationHost>());
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });

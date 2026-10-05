@@ -42,6 +42,21 @@ public sealed record PlaybackState
     /// <summary>Gets when the media server reported <see cref="Position"/>.</summary>
     public DateTimeOffset ReportedAt { get; init; }
 
+    /// <summary>Estimates the playback position at a time: <see cref="Position"/> plus the time since
+    /// <see cref="ReportedAt"/>, or <see cref="Position"/> while paused.</summary>
+    /// <param name="now">The time to estimate for.</param>
+    /// <returns>The position, never before the reported one.</returns>
+    public TimeSpan EstimatePosition(DateTimeOffset now)
+    {
+        if (IsPaused)
+        {
+            return Position;
+        }
+
+        var elapsed = now - ReportedAt;
+        return elapsed > TimeSpan.Zero ? Position + elapsed : Position;
+    }
+
     /// <summary>Creates the state described by a playback report.</summary>
     /// <param name="playbackEvent">The report.</param>
     /// <param name="reportedAt">When the report arrived.</param>

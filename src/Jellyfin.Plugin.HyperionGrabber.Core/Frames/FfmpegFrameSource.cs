@@ -26,7 +26,7 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 /// FFmpeg on the CPU. The FFmpeg process is always killed and awaited on end of stream, error and disposal.
 /// </para>
 /// </remarks>
-public sealed partial class FfmpegFrameSource : IAsyncDisposable
+public sealed partial class FfmpegFrameSource : IFrameSource
 {
     private const int StderrLinesKept = 8;
     private const int MaxStderrLineLength = 400;
@@ -78,6 +78,12 @@ public sealed partial class FfmpegFrameSource : IAsyncDisposable
 
     /// <summary>Gets the acceleration in use; <see cref="HardwareAcceleration.None"/> after a fallback to the CPU.</summary>
     public HardwareAcceleration ActiveAcceleration => (HardwareAcceleration)Volatile.Read(ref _activeAcceleration);
+
+    /// <summary>
+    /// Gets a task that completes once every frame was read after the end of the video or disposal, and faults with
+    /// <see cref="FrameSourceException"/> when FFmpeg could not be started or failed.
+    /// </summary>
+    public Task Completion => _ready.Reader.Completion;
 
     /// <summary>Gets the number of frames read from FFmpeg so far.</summary>
     internal long FramesRead => Interlocked.Read(ref _framesRead);
@@ -138,6 +144,14 @@ public sealed partial class FfmpegFrameSource : IAsyncDisposable
 
         return null;
     }
+
+    /// <summary>
+    /// Returns the next frame if one is ready, without waiting. Only one consumer may read at a time. Dispose each
+    /// frame when done with it.
+    /// </summary>
+    /// <param name="frame">The frame.</param>
+    /// <returns>Whether a frame was ready; check <see cref="Completion"/> to tell the end of the video from a wait.</returns>
+    public bool TryReadFrame([NotNullWhen(true)] out VideoFrame? frame) => _ready.Reader.TryRead(out frame);
 
     /// <summary>
     /// Stops FFmpeg (killing it if needed) and waits until it has exited.

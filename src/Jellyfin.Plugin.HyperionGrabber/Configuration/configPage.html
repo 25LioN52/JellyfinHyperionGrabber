@@ -8,7 +8,7 @@
                 </div>
                 <p>Streams the video you are watching to <b>Hyperion.ng</b> or <b>HyperHDR</b> for ambient lighting.
                     LED layout, colors and smoothing are configured in Hyperion; this plugin only sends the picture.</p>
-                <p class="fieldDescription">Early preview: this version tests the connection and your LED layout, and recognizes playback on the devices you select (shown in the Jellyfin log). Sending the picture to Hyperion during playback arrives in a later release.</p>
+                <p class="fieldDescription">Early preview: the lights follow playback of library videos on the devices you select. If Hyperion restarts during playback, the lights come back with the next playback.</p>
             </div>
 
             <form id="HyperionGrabberConfigForm">
@@ -54,6 +54,12 @@
                             <span>Follow playback</span>
                         </label>
                         <div class="fieldDescription checkboxFieldDescription">Only playback on the devices selected below drives the lights.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="FramesPerSecond">Frame rate</label>
+                        <input is="emby-input" type="number" id="FramesPerSecond" name="FramesPerSecond" required min="1" max="60" />
+                        <div class="fieldDescription">Pictures per second sent to Hyperion, 1-60. Default 25 looks smooth; lower it if the Jellyfin server is short on CPU. Applies from the next playback.</div>
                     </div>
 
                     <h4>Devices</h4>
