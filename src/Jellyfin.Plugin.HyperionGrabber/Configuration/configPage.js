@@ -6,8 +6,33 @@ const HyperionGrabberConfig = {
     minPriority: 100,
     maxPriority: 199,
     defaultFramesPerSecond: 25,
-    maxFramesPerSecond: 60
+    maxFramesPerSecond: 60,
+    maxLatencyOffsetMilliseconds: 2000,
+    defaultPauseReleaseSeconds: 15,
+    maxPauseReleaseSeconds: 3600
 };
+
+function readInteger(view, id) {
+    return Number.parseInt(view.querySelector(id).value, 10);
+}
+
+// 0 is a valid saved value for these settings, so only fall back to the default when the value is missing.
+function savedOrDefault(value, fallback) {
+    return Number.isInteger(value) ? value : fallback;
+}
+
+function validateTiming(offset, pauseRelease) {
+    const maxOffset = HyperionGrabberConfig.maxLatencyOffsetMilliseconds;
+    if (!Number.isInteger(offset) || offset < -maxOffset || offset > maxOffset) {
+        return `Light timing offset must be between -${maxOffset} and ${maxOffset} ms.`;
+    }
+
+    if (!Number.isInteger(pauseRelease) || pauseRelease < 0 || pauseRelease > HyperionGrabberConfig.maxPauseReleaseSeconds) {
+        return `Release after pause must be between 0 and ${HyperionGrabberConfig.maxPauseReleaseSeconds} seconds.`;
+    }
+
+    return null;
+}
 
 function readFramesPerSecond(view) {
     return Number.parseInt(view.querySelector('#FramesPerSecond').value, 10);
@@ -185,6 +210,8 @@ export default function (view) {
             view.querySelector('#HyperionPriority').value = config.HyperionPriority || 150;
             view.querySelector('#PlaybackEnabled').checked = config.PlaybackEnabled === true;
             view.querySelector('#FramesPerSecond').value = config.FramesPerSecond || HyperionGrabberConfig.defaultFramesPerSecond;
+            view.querySelector('#LatencyOffsetMilliseconds').value = savedOrDefault(config.LatencyOffsetMilliseconds, 0);
+            view.querySelector('#PauseReleaseSeconds').value = savedOrDefault(config.PauseReleaseSeconds, HyperionGrabberConfig.defaultPauseReleaseSeconds);
             return loadClients(view, config.PlaybackDevices || [], config.PlaybackUsers || []);
         }).then(function () {
             Dashboard.hideLoadingMsg();
@@ -219,7 +246,9 @@ export default function (view) {
         const framesPerSecond = readFramesPerSecond(view);
         const devices = readChoices(view.querySelector('#PlaybackDeviceList'));
         const users = readChoices(view.querySelector('#PlaybackUserList'));
-        const fpsProblem = validateFramesPerSecond(framesPerSecond);
+        const latencyOffset = readInteger(view, '#LatencyOffsetMilliseconds');
+        const pauseRelease = readInteger(view, '#PauseReleaseSeconds');
+        const fpsProblem = validateFramesPerSecond(framesPerSecond) || validateTiming(latencyOffset, pauseRelease);
         if (fpsProblem) {
             showPlaybackResult(view, '✖ ' + fpsProblem);
             return false;
@@ -238,6 +267,8 @@ export default function (view) {
             config.HyperionPriority = target.Priority;
             config.PlaybackEnabled = playbackEnabled;
             config.FramesPerSecond = framesPerSecond;
+            config.LatencyOffsetMilliseconds = latencyOffset;
+            config.PauseReleaseSeconds = pauseRelease;
             config.PlaybackDevices = devices;
             config.PlaybackUsers = users;
             return ApiClient.updatePluginConfiguration(HyperionGrabberConfig.pluginUniqueId, config);

@@ -31,8 +31,12 @@ are not washed out.
 They are not part of the decoded video, so the lights follow the film only, which is usually what you want.
 
 **What happens when I pause?**
-The LEDs hold the last frame. When playback stops, the plugin releases its Hyperion priority
-and Hyperion falls back to whatever it shows otherwise (effect, other grabber or off).
+The LEDs hold the last frame. If the pause lasts longer than 15 seconds (configurable, 0 = always hold), the plugin
+releases its Hyperion priority and Hyperion shows its default until you resume; the lights pick up the picture again
+on resume. When playback stops, the priority is released at once.
+
+**The lights are slightly late. Can I fix that?**
+Yes: set **Light timing offset (ms)** on the plugin page. See [Lights are late or early](troubleshooting.md#the-lights-are-late-or-early).
 
 **Is anything sent to the internet?**
 No. The plugin only connects to the Hyperion server you configure.

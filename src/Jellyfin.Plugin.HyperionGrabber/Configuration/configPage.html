@@ -62,6 +62,18 @@
                         <div class="fieldDescription">Pictures per second sent to Hyperion, 1-60. Default 25 looks smooth; lower it if the Jellyfin server is short on CPU. Applies from the next playback.</div>
                     </div>
 
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="LatencyOffsetMilliseconds">Light timing offset (ms)</label>
+                        <input is="emby-input" type="number" id="LatencyOffsetMilliseconds" name="LatencyOffsetMilliseconds" required min="-2000" max="2000" step="50" />
+                        <div class="fieldDescription">If the lights change <b>after</b> the picture, increase this (for example 300, then adjust); if they change <b>before</b> it, use a negative value. -2000 to 2000, default 0. Applies from the next playback.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="PauseReleaseSeconds">Release the lights after pausing for (seconds)</label>
+                        <input is="emby-input" type="number" id="PauseReleaseSeconds" name="PauseReleaseSeconds" required min="0" max="3600" />
+                        <div class="fieldDescription">While paused the lights hold the picture; after this time they go back to Hyperion's default (effect, other source or off) until you resume. 0 keeps holding the picture. Default 15.</div>
+                    </div>
+
                     <h4>Devices</h4>
                     <div id="PlaybackDeviceList" class="checkboxList"></div>
                     <div class="fieldDescription">Devices with a recent Jellyfin session, most recent first. If your TV is missing, start playing something on it and press <b>Refresh</b>.</div>

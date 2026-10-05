@@ -1,3 +1,4 @@
+using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -30,6 +31,15 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the number of frames per second sent to Hyperion during playback (1-60).</summary>
     public int FramesPerSecond { get; set; } = FfmpegFrameSourceOptions.DefaultFramesPerSecond;
 
+    /// <summary>
+    /// Gets or sets how many milliseconds earlier (positive) or later (negative) the lights show the picture, to cancel
+    /// the delay between the TV and the LEDs (-2000 to 2000).
+    /// </summary>
+    public int LatencyOffsetMilliseconds { get; set; }
+
+    /// <summary>Gets or sets how many seconds a pause may last before the lights are released (0 = hold the frame).</summary>
+    public int PauseReleaseSeconds { get; set; } = (int)StreamingSettings.DefaultPauseRelease.TotalSeconds;
+
     /// <summary>Gets or sets a value indicating whether playback on the selected devices drives the lights.</summary>
     public bool PlaybackEnabled { get; set; }
 
@@ -49,6 +59,8 @@ public class PluginConfiguration : BasePluginConfiguration
             ? null
             : new HyperionClientOptions { Host = HyperionHost.Trim(), Port = HyperionPort, Priority = HyperionPriority },
         FramesPerSecond = FramesPerSecond,
+        LatencyOffset = TimeSpan.FromMilliseconds(LatencyOffsetMilliseconds),
+        PauseRelease = TimeSpan.FromSeconds(PauseReleaseSeconds),
     };
 
     /// <summary>Creates the playback filter described by these settings.</summary>
