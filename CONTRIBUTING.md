@@ -35,7 +35,7 @@ the plugin in a local Jellyfin.
 6. **Title the PR** with [Conventional Commits](https://www.conventionalcommits.org/): `feat: add seek handling`,
    `fix: reconnect after Hyperion restart`, `docs: …`. PRs are squash-merged, so the title becomes the changelog entry.
    Use `feat!:` for breaking changes.
-7. **Review:** every PR is reviewed by Claude Code (automatically) and needs approval from the maintainer. Address
+7. **Review:** the maintainer reviews every PR (with Claude Code, locally) before merging. Address
    every finding or reply with why it does not apply.
 
 ## Ground rules

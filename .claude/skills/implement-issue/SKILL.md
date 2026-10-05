@@ -68,4 +68,5 @@ design changes. Tick the item in `docs/roadmap.md` if the issue completes one.
 - Commit messages and the PR title use Conventional Commits: `feat: ...`, `fix: ...`, `docs: ...`, `test: ...`.
 - Push the branch and open a PR that fills in `.github/pull_request_template.md`, including `Closes #$issue`, the plan,
   and exactly how you verified it. Mention anything you could not verify (for example: not tested on real Hyperion).
-- Do not merge. The Claude review runs automatically; address every finding with a fix or a reasoned reply.
+- Do not merge. The maintainer reviews it locally with `/review-pr <n>`; address every finding with a fix or a
+  reasoned reply.

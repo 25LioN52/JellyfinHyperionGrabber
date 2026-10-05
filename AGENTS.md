@@ -67,7 +67,8 @@ Tests use xUnit v3 on Microsoft.Testing.Platform (`global.json`), so filters are
 - One issue → one branch (`feat/<issue>-slug`, `fix/...`, `docs/...`) → one small PR.
 - PR title in Conventional Commits (`feat: ...`, `fix: ...`); PRs are squash-merged and release-please turns titles
   into `CHANGELOG.md` and versions. Never edit `CHANGELOG.md`, `version.txt` or `.release-please-manifest.json` by hand.
-- Every PR is reviewed by Claude Code using `.claude/skills/review-pr/SKILL.md`; the maintainer merges.
+- The maintainer reviews every PR locally with Claude Code (`/review-pr <n>`, `.claude/skills/review-pr/SKILL.md`)
+  and merges. There is no automatic review in CI.
 
 ## Definition of done
 
