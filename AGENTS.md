@@ -47,7 +47,9 @@ Tests use xUnit v3 on Microsoft.Testing.Platform (`global.json`), so filters are
    reply; priorities **100-199** only; never send `Clear(-1)` (clears every source); always drain replies; RGB24
    `RawImage`. Any change to protocol code needs official-verifier tests and, if the layout changes, updated golden bytes.
 4. **Never hurt the Jellyfin server.** Async I/O with cancellation everywhere, no sync-over-async, no unbounded
-   buffers or queues, `ConfigureAwait(false)` in `src/`. Per-frame code must not allocate per frame.
+   buffers or queues, `ConfigureAwait(false)` in `src/`. Per-frame code must not allocate frame buffers or other
+   per-frame objects (pool them); small incidental runtime allocations (pipe reads, channel waits) are accepted when
+   measured and noted in the PR.
 5. **No new shipped dependencies** without an ADR. The plugin zip contains only our two assemblies (see
    `build/plugin.json`), which avoids version conflicts with other plugins inside Jellyfin.
 6. **Saved configuration is a public contract.** Only add properties with safe defaults; renames and removals need a

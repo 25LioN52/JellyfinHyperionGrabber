@@ -9,7 +9,7 @@ flowchart TB
             P[Plugin + config page]
             API[HyperionGrabberController]
             Mon[PlaybackMonitorService]
-            Src["Jellyfin media/FFmpeg adapters (planned, M1)"]
+            Src["JellyfinFfmpegSettingsProvider<br/>(media source resolution planned, M1)"]
         end
         subgraph Core["Jellyfin.Plugin.HyperionGrabber.Core (no Jellyfin references)"]
             Tester[HyperionConnectionTester]
@@ -17,7 +17,7 @@ flowchart TB
             Monitor[PlaybackMonitor]
             Session["IGrabSession (streaming planned, M1): frame source -> sync -> sink"]
             Sync["SyncEngine (planned, M2)"]
-            Frames["FfmpegFrameSource (planned, M1)"]
+            Frames["FfmpegFrameSource"]
             Client[HyperionClient]
             Codec[FlatBuffers codec]
         end
@@ -40,7 +40,7 @@ flowchart TB
 
 See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 
-## What exists today (M0)
+## What exists today
 
 | Component | Responsibility |
 | --- | --- |
@@ -51,6 +51,9 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `TestPattern`, `TestPatternPlayer` | Layout test picture and its paced playback, always clearing afterwards |
 | `HyperionConnectionTester` | Config-page actions; returns results instead of throwing |
 | `HyperionGrabberController` | Admin-only `POST HyperionGrabber/TestConnection` and `/TestPattern`, `GET HyperionGrabber/Clients` (devices and users of recent sessions for the config page) |
+| `FfmpegFrameSource` (M1) | Runs FFmpeg from a start position and yields pooled RGB24 `VideoFrame`s at a constant rate; hardware decoding with CPU fallback; always kills and awaits the process ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) |
+| `FfmpegFrameSourceOptions`, `FfmpegArguments` | Output size from the aspect ratio, validation, and the FFmpeg command line per hardware acceleration method |
+| `IFfmpegSettingsProvider` / `JellyfinFfmpegSettingsProvider` | Core interface for the server's FFmpeg path and hardware settings; the adapter reads Jellyfin's encoding options |
 
 ## Playback monitor (M1)
 

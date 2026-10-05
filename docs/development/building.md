@@ -5,7 +5,8 @@
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) (pinned loosely in `global.json`) and the **.NET 9 runtime**
   (the Jellyfin 10.11 build and its tests run on .NET 9).
 - Git. PowerShell 7 for the packaging scripts (Windows PowerShell 5.1 also works).
-- Optional: Docker (local Jellyfin test bed), Python 3 (docs preview).
+- Optional: FFmpeg on the `PATH` (the frame source tests are skipped without it; see [Testing](testing.md#ffmpeg-tests)),
+  Docker (local Jellyfin test bed), Python 3 (docs preview).
 
 Any editor works. Visual Studio 2022 17.14+ / 2026, Rider and VS Code with C# Dev Kit understand the `.slnx` solution
 and the Microsoft.Testing.Platform test runner.

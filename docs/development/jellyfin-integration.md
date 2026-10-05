@@ -71,11 +71,35 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
   configuration through `Plugin.Instance` (only in `PluginPlaybackFilterSource`) and react to
   `Plugin.ConfigurationChanged`.
 
-## Media and decoding (input for M1)
+## Media and decoding
 
 - Decode the **media source that is playing** (`MediaSourceId`), from its path, never through Jellyfin's HTTP streaming
-  endpoints (that would create a phantom playback session).
-- Use Jellyfin's FFmpeg (`IMediaEncoder.EncoderPath`) and its hardware acceleration settings (encoding options:
-  QSV, VA-API, NVENC, AMF, VideoToolbox, RKMPP), with CPU fallback.
-- Scale on the GPU before downloading frames; output `rgb24` at a constant frame rate; keep the aspect ratio.
+  endpoints (that would create a phantom playback session). Resolving the media source to a `VideoInput` (path,
+  display size, codec) is part of the streaming session *(planned, M1)*.
 - Live TV is excluded: re-decoding would open a second tuner stream.
+
+`JellyfinFfmpegSettingsProvider` reads, on every call, `IMediaEncoder.EncoderPath` and the encoding options
+(`IServerConfigurationManager.GetEncodingOptions()`, the same in 10.11 and 12): `HardwareAccelerationType`,
+`VaapiDevice` and `HardwareDecodingCodecs`. Like Jellyfin's transcoder, a video is hardware-decoded only when its
+codec is enabled under **Dashboard → Playback → Transcoding → Enable hardware decoding for**; an unknown codec tries
+the hardware. `FfmpegFrameSource` ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) then builds the command line:
+
+| Jellyfin setting | FFmpeg input options | Scaling |
+| --- | --- | --- |
+| None | — | `scale=W:H:flags=area` (CPU) |
+| NVIDIA NVENC | `-hwaccel cuda -hwaccel_output_format cuda` | `scale_cuda=W:H:format=yuv420p,hwdownload` |
+| Intel QuickSync | Linux: `-init_hw_device vaapi=va:<VaapiDevice> -init_hw_device qsv=qs@va`; then `-hwaccel qsv -hwaccel_output_format qsv` | `scale_qsv=w=W:h=H:format=nv12,hwdownload` |
+| VA-API | `-vaapi_device <VaapiDevice> -hwaccel vaapi -hwaccel_output_format vaapi` | `scale_vaapi=w=W:h=H:format=nv12,hwdownload` |
+| AMD AMF | Windows: `-hwaccel d3d11va`; Linux: as VA-API | Windows: CPU; Linux: `scale_vaapi` |
+| Apple VideoToolbox | `-hwaccel videotoolbox` | CPU |
+| Rockchip RKMPP | `-hwaccel rkmpp -hwaccel_output_format drm_prime` | `scale_rkrga=w=W:h=H:format=nv12:afbc=0,hwdownload` |
+| V4L2 | — (CPU) | CPU |
+
+Every variant adds `-ss <start>` before `-i`, `-map 0:v:0 -an -sn -dn`, an `fps=<rate>` filter first and
+`format=rgb24`, and writes `-f rawvideo pipe:1`. W is 160 by default and H follows from the display aspect ratio
+(rounded to an even number). If FFmpeg exits with an error before the first frame, the source logs a warning and
+restarts on the CPU. HDR tone mapping is not applied yet *(planned, M3)*.
+
+Verified so far: CPU on Windows (FFmpeg 8.0) and Linux (Ubuntu FFmpeg 6.1); NVENC and the D3D11VA path on an NVIDIA
+RTX 4070 (Windows); the CPU fallback with an unavailable VA-API device. QSV, VA-API, RKMPP and VideoToolbox are built
+after Jellyfin's own commands but not yet tested on real hardware; please report results.
