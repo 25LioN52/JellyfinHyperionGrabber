@@ -9,7 +9,7 @@ Milestones are deliberately small so each one ships something usable. Items beco
 - [x] LED layout test pattern and **Test connection** / **Send test pattern** on the configuration page
 - [x] One codebase, two builds: Jellyfin 10.11 (.NET 9) and Jellyfin 12 (.NET 10), one repository URL
 - [x] CI (Linux + Windows), CodeQL, release automation, plugin repository on GitHub Pages
-- [x] Documentation site, contributor and agent guides, Claude Code review on every PR
+- [x] Documentation site, contributor and agent guides, Claude Code review skill (`/review-pr`)
 
 ## M1: Playback to LEDs
 

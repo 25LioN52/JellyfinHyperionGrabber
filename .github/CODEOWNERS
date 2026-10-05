@@ -1,2 +1,2 @@
-# Default reviewer for everything. Claude Code reviews every PR automatically (.github/workflows/claude-review.yml).
+# Default reviewer for everything. Reviews run locally with Claude Code (/review-pr <n>).
 * @25LioN52

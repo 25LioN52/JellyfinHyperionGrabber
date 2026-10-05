@@ -23,7 +23,7 @@ flowchart LR
     Issue["Issue with acceptance criteria"] --> Agent["Agent: /implement-issue N<br/>or label 'claude'"]
     Agent --> PR["PR: tests + docs + verification notes"]
     PR --> CI["CI: build, tests x2,<br/>format, CodeQL, PR title"]
-    PR --> Review["Claude review<br/>(review-pr skill)"]
+    PR --> Review["Maintainer runs /review-pr N<br/>locally (Claude Code)"]
     Review -->|REQUEST CHANGES| Agent
     Review -->|APPROVE + CI green| Merge["Owner merges (squash)"]
 ```
@@ -33,8 +33,10 @@ flowchart LR
     - locally: `claude` in the repository, then `/implement-issue 42`;
     - on GitHub: add the `claude` label to the issue, or comment `@claude implement this` (owners and collaborators
       only, see `.github/workflows/claude.yml`).
-3. **Automatic review**: every non-draft PR gets a Claude review following `.claude/skills/review-pr/SKILL.md`,
-   with inline comments and a final `Verdict:` line. Ask for fixes with `@claude address the review comments`.
+3. **Review locally**: run `claude` in the repository and `/review-pr 42`. It checks out the PR, builds and tests
+   it, follows `.claude/skills/review-pr/SKILL.md`, and posts inline comments plus a summary with a final `Verdict:`
+   line through your `gh` login. Ask it to fix the findings in the same session, or comment
+   `@claude address the review comments` on the PR.
 4. **Merge** when CI is green and the verdict is APPROVE. The PR title becomes the changelog entry.
 
 ## Guardrails

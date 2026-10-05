@@ -1,14 +1,17 @@
 ---
 name: review-pr
-description: Review a pull request (or the local diff) of this repository as its required reviewer - correctness, Hyperion protocol invariants, both Jellyfin lines, server safety, tests, docs and config compatibility - and post a verdict. Used automatically by .github/workflows/claude-review.yml on every PR and whenever asked to review.
+description: Review a pull request (or the local diff) of this repository as its required reviewer - correctness, Hyperion protocol invariants, both Jellyfin lines, server safety, tests, docs and config compatibility - and post a verdict. Run on the maintainer's PC with /review-pr <n> (there is no automatic review in CI); use whenever asked to review.
 argument-hint: "[pr-number]"
 arguments: [pr]
 ---
 
 # Review PR $pr
 
-You are the required reviewer. The maintainer relies on this review to merge without reading every line, so be
-thorough, specific and honest. Never approve something you have not checked.
+You are the required reviewer. The maintainer runs this skill locally and relies on it to merge without reading
+every line, so be thorough, specific and honest. Never approve something you have not checked.
+
+Work in a clean checkout of the PR branch (`gh pr checkout $pr`, or a separate worktree if the current one has
+changes) so you can build and test exactly what will be merged, after merging current `main` into it.
 
 ## 1. Gather context
 
@@ -53,10 +56,15 @@ thorough, specific and honest. Never approve something you have not checked.
 
 ## 3. Report
 
+Post through the maintainer's signed-in `gh` CLI:
+
 - One inline comment per concrete issue, anchored to the line, starting with a severity tag:
-  `[blocking]`, `[should-fix]` or `[nit]`. Explain the failure scenario and suggest a fix.
-- One summary comment with: what the PR does (two sentences), what you verified (build/tests run or not), a list of
-  blocking issues, a list of other findings, and finally exactly one of these lines:
+  `[blocking]`, `[should-fix]` or `[nit]`. Explain the failure scenario and suggest a fix. Use
+  `gh api repos/{owner}/{repo}/pulls/$pr/comments -f body=... -f commit_id=<head sha> -f path=<file> -F line=<n> -f side=RIGHT`.
+- One summary posted as a review comment (`gh pr review $pr --comment --body-file <file>`; GitHub does not let the
+  maintainer approve PRs opened from their own account, so the verdict line is what counts) with: what the PR does
+  (two sentences), what you verified (build/tests run or not), a list of blocking issues, a list of other findings,
+  and finally exactly one of these lines:
 
 ```
 Verdict: APPROVE

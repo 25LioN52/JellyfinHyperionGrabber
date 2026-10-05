@@ -2,9 +2,9 @@
 
 ## Claude Code specifics
 
-- **Skills** (`.claude/skills/`): `/implement-issue <n>` to take an issue to a PR, `/review-pr <n>` to review (also run
-  by CI on every PR), `/release` for release maintenance. `hyperion-protocol` and `jellyfin-plugin` are reference
-  skills that load when you work on those areas.
+- **Skills** (`.claude/skills/`): `/implement-issue <n>` to take an issue to a PR, `/review-pr <n>` to review (run
+  locally by the maintainer; there is no CI review), `/release` for release maintenance. `hyperion-protocol` and
+  `jellyfin-plugin` are reference skills that load when you work on those areas.
 - **Rules** (`.claude/rules/`) are scoped by path and load automatically when you open matching files.
 - You are this repository's **required reviewer**. When asked to review anything, use `/review-pr`; be specific,
   cite `file:line`, and separate blocking issues from suggestions.

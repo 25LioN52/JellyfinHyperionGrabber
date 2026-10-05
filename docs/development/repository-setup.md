@@ -17,7 +17,10 @@ One-time GitHub settings for the maintainer. Everything else is in the repositor
       `Build & test (ubuntu-latest)`, `Build & test (windows-latest)`, `Package plugin`, `conventional-commit`;
       block force pushes.
 
-## Claude Code (reviews and agents)
+## Claude Code
+
+Reviews run on your PC (`/review-pr <n>`) and need only `gh auth login`. The steps below are optional and only
+enable `.github/workflows/claude.yml` (Claude implements an issue when you add the `claude` label or mention `@claude`).
 
 - [ ] Install the **Claude GitHub App** on the repository. The easiest way is to run `/install-github-app` in a
       Claude Code terminal session inside this repository; it installs the app and creates the secret.
