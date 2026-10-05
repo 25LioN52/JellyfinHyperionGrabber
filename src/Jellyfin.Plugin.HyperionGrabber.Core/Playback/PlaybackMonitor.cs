@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -195,14 +196,10 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
             Log.FilterChanged(_logger, filter.Enabled, filter.DeviceIds.Count, filter.UserIds.Count);
         }
 
-        TrackedPlayback? desired = null;
-        foreach (var tracked in _playing.Values)
-        {
-            if (filter.Matches(tracked.State.DeviceId, tracked.State.UserId) && (desired is null || tracked.Sequence > desired.Sequence))
-            {
-                desired = tracked;
-            }
-        }
+        // Runs once per playback report (a few per minute), not per frame, so LINQ is fine here.
+        var desired = _playing.Values
+            .Where(tracked => filter.Matches(tracked.State.DeviceId, tracked.State.UserId))
+            .MaxBy(tracked => tracked.Sequence);
 
         if (_active is { } active && (desired is null || desired.Sequence != active.Sequence))
         {

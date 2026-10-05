@@ -17,9 +17,13 @@ internal static class PlaybackEventMapper
     {
         ArgumentNullException.ThrowIfNull(args);
         var session = args.Session;
-        var sessionId = session?.Id;
-        var deviceId = session?.DeviceId ?? args.DeviceId;
-        if (string.IsNullOrEmpty(sessionId) || string.IsNullOrEmpty(deviceId))
+        if (session is null || string.IsNullOrEmpty(session.Id))
+        {
+            return null;
+        }
+
+        var deviceId = session.DeviceId ?? args.DeviceId;
+        if (string.IsNullOrEmpty(deviceId))
         {
             return null;
         }
@@ -33,11 +37,11 @@ internal static class PlaybackEventMapper
         return new PlaybackEvent
         {
             Kind = kind,
-            SessionId = sessionId,
+            SessionId = session.Id,
             DeviceId = deviceId,
-            DeviceName = session?.DeviceName ?? args.DeviceName ?? deviceId,
-            Client = session?.Client ?? args.ClientName ?? string.Empty,
-            UserId = session?.UserId ?? Guid.Empty,
+            DeviceName = session.DeviceName ?? args.DeviceName ?? deviceId,
+            Client = session.Client ?? args.ClientName ?? string.Empty,
+            UserId = session.UserId,
             ItemId = args.Item?.Id ?? Guid.Empty,
             MediaSourceId = args.MediaSourceId,
             Position = args.PlaybackPositionTicks is { } ticks ? TimeSpan.FromTicks(ticks) : null,
