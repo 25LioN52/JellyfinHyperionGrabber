@@ -16,15 +16,17 @@ Milestones are deliberately small so each one ships something usable. Items beco
 - [x] Playback monitor: react to playback start/stop on selected devices (device and user filter on the config page)
 - [x] Frame source: Jellyfin's FFmpeg decodes the playing media source from its position, scaled on the GPU to
       about 160 px wide, keeping the aspect ratio; uses Jellyfin's hardware acceleration settings, CPU fallback
-- [ ] Stream to Hyperion at a configurable frame rate (default 25), bounded buffers, frame dropping under load
+- [x] Stream to Hyperion at a configurable frame rate (default 25), bounded buffers, frame dropping under load
 - [ ] Reconnect with backoff when Hyperion restarts; release the priority on stop
 - [ ] End-to-end test against a real Hyperion.ng in CI (container); verify the multi-instance (WLED + Hue) behaviour
 - [ ] Diagnostics: status panel on the config page (connected, fps, current session)
 
 ## M2: Sync
 
-- [ ] Pause holds the last frame (keep-alive so Hyperion does not drop the connection); resume continues
-- [ ] Seek detection and restart at the new position; drift correction between position reports
+- [x] Pause holds the last frame (keep-alive so Hyperion does not drop the connection); resume continues *(shipped
+      with M1 streaming)*
+- [x] Seek detection and restart at the new position *(shipped with M1 streaming)*
+- [ ] Drift correction between position reports
 - [ ] Per-device latency offset (ms), with a calibration video and guide
 - [ ] Optional precise clock for Kodi clients via Kodi's JSON-RPC (position and events in real time)
 - [ ] Playback speed changes

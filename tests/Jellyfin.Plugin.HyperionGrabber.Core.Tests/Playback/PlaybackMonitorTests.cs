@@ -106,6 +106,22 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Progress_WithoutPosition_KeepsTheEstimatedPosition()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi", position: TimeSpan.FromMinutes(5)));
+
+        // A report without a position must not look like a seek to the start.
+        _time.Advance(TimeSpan.FromSeconds(10));
+        await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi") with { IsPaused = true });
+
+        var update = Assert.Single(Assert.Single(_factory.Sessions).Updates);
+        Assert.Equal(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(10), update.Position);
+        Assert.True(update.IsPaused);
+        Assert.Equal(_time.GetUtcNow(), update.ReportedAt);
+    }
+
+    [Fact]
     public async Task Stopped_DisposesTheSession()
     {
         await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));

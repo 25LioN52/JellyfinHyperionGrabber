@@ -30,13 +30,19 @@ Hyperion app still wins. Hyperion.ng only accepts 100-199 from FlatBuffers clien
 Choose which playback drives the lights. Nothing happens until you turn on **Follow playback** and select at least
 one device.
 
+While a matching video plays, the plugin decodes it on the server and sends the picture to Hyperion. Pausing holds
+the last picture, seeking jumps with the video, and stopping releases the priority so Hyperion falls back to whatever
+it shows otherwise. Only videos from your libraries are streamed; see
+[what is not supported](troubleshooting.md#the-lights-do-not-follow-a-video).
+
 !!! note "Early preview"
-    This version recognizes matching playback and writes it to Jellyfin's log (**Dashboard → Logs**, lines from
-    `PlaybackMonitor`). Sending the picture to Hyperion during playback arrives in a later release *(planned)*.
+    If Hyperion restarts or the network drops during playback, the lights stay off until the next playback
+    (reconnecting is *(planned)*).
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | **Follow playback** | off | Turns playback detection on. |
+| **Frame rate** | `25` | Pictures per second sent to Hyperion, 1-60. 25 looks smooth; lower it (for example to 10-15) if the Jellyfin server is short on CPU, especially without hardware decoding. Applies from the next playback. |
 | **Devices** | none | Devices whose playback drives the lights, usually the TV your LEDs are mounted on. With none selected, no playback does. |
 | **Users (optional)** | none | Only playback by these users drives the lights. Leave all unticked to react to every user. |
 
@@ -48,7 +54,10 @@ reinstalling the Jellyfin app or add-on on the TV, select the device again.
 If two selected devices play at the same time, the one that started most recently drives the lights; when it stops,
 the other one takes over.
 
+The picture is decoded with Jellyfin's FFmpeg and the hardware acceleration set under
+**Dashboard → Playback → Transcoding**, scaled to 160 pixels wide; see [Installation](installation.md#docker-notes).
+
 ## More playback settings *(planned)*
 
-Later releases add: what happens on pause (default: hold the last frame), capture size and frame rate, a latency
-offset, HDR tone mapping, and multiple Hyperion targets (one per TV). See the [roadmap](../roadmap.md).
+Later releases add: a latency offset, HDR tone mapping, and multiple Hyperion targets (one per TV). See the
+[roadmap](../roadmap.md).

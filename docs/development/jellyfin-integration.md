@@ -74,9 +74,16 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
 ## Media and decoding
 
 - Decode the **media source that is playing** (`MediaSourceId`), from its path, never through Jellyfin's HTTP streaming
-  endpoints (that would create a phantom playback session). Resolving the media source to a `VideoInput` (path,
-  display size, codec) is part of the streaming session *(planned, M1)*.
-- Live TV is excluded: re-decoding would open a second tuner stream.
+  endpoints (that would create a phantom playback session).
+- `JellyfinVideoInputResolver` does this once per playback start, on the streaming session's task:
+  `ILibraryManager.GetItemById(itemId)`, then `IMediaSourceManager.GetStaticMediaSources(item, false)` (same signature
+  in 10.11 and 12). It picks the source whose id matches the reported `MediaSourceId` (with or without dashes),
+  otherwise the first (default) one, and takes size and codec from its first video stream.
+- Like Jellyfin's transcoder, the path is passed as `file:<path>`, so FFmpeg never reads a path as another protocol.
+- Not decoded, with a log line saying why: items that are not `Video` (Live TV channels, music), sources that are not
+  local files (`Protocol != File` or `IsRemote`, which covers `.strm` and Live TV: re-decoding would open a second
+  tuner or network stream), infinite streams, DVD/Blu-ray folders and disc images (`VideoType` other than
+  `VideoFile`, which need Jellyfin's special input handling), and sources without a video stream of known size.
 
 `JellyfinFfmpegSettingsProvider` reads, on every call, `IMediaEncoder.EncoderPath` and the encoding options
 (`IServerConfigurationManager.GetEncodingOptions()`, the same in 10.11 and 12): `HardwareAccelerationType`,

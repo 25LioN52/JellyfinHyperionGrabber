@@ -25,7 +25,7 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 /// connect again; retry policy belongs to the caller.</para>
 /// <para>Disposing clears the priority (Hyperion and HyperHDR also clear it when the socket closes).</para>
 /// </remarks>
-public sealed partial class HyperionClient : IHyperionSink, IAsyncDisposable
+public sealed partial class HyperionClient : IHyperionConnection
 {
     private const int MaxReplyLength = 64 * 1024;
     private static readonly TimeSpan ClearOnDisposeTimeout = TimeSpan.FromSeconds(1);

@@ -9,14 +9,14 @@ flowchart TB
             P[Plugin + config page]
             API[HyperionGrabberController]
             Mon[PlaybackMonitorService]
-            Src["JellyfinFfmpegSettingsProvider<br/>(media source resolution planned, M1)"]
+            Src["JellyfinFfmpegSettingsProvider<br/>JellyfinVideoInputResolver<br/>PluginStreamingSettingsProvider"]
         end
         subgraph Core["Jellyfin.Plugin.HyperionGrabber.Core (no Jellyfin references)"]
             Tester[HyperionConnectionTester]
             Pattern[TestPattern / TestPatternPlayer]
             Monitor[PlaybackMonitor]
-            Session["IGrabSession (streaming planned, M1): frame source -> sync -> sink"]
-            Sync["SyncEngine (planned, M2)"]
+            Session["StreamingGrabSession: frame source -> pacing -> client"]
+            Sync["Latency offset, Kodi clock (planned, M2)"]
             Frames["FfmpegFrameSource"]
             Client[HyperionClient]
             Codec[FlatBuffers codec]
@@ -62,7 +62,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `PlaybackEvent`, `PlaybackState` | Host-independent playback report (start/progress/stop, session, device, user, item, media source, position, paused) and the state a session sees, time-stamped with `ReportedAt` |
 | `PlaybackFilter` | Enabled switch, selected device ids (none = nothing matches), selected user ids (none = every user) |
 | `PlaybackMonitor` | Non-blocking `Post`/`UpdateFilter` into a bounded queue (256, drop oldest); one processing task owns all state and decides which playback drives the target |
-| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state)`, `Update(state)`, `DisposeAsync()`. Until streaming lands, `LoggingGrabSessionFactory` only logs |
+| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state)`, `Update(state)`, `DisposeAsync()`; implemented by `StreamingGrabSessionFactory` |
 | `PlaybackMonitorService` (plugin) | `IHostedService` that subscribes to `ISessionManager.PlaybackStart/Progress/Stopped`, maps them with `PlaybackEventMapper` and feeds the saved filter (`IPlaybackFilterSource`) |
 
 Rules the monitor implements:
@@ -70,6 +70,8 @@ Rules the monitor implements:
 - **One session per target.** There is one Hyperion target today, so at most one `IGrabSession` runs. Of all matching
   playbacks, the most recently started one drives it; when it stops, the most recent remaining one takes over with
   its last reported state. Multiple targets (M3) will make this decision per target.
+- A progress report without a position keeps the estimated position (last report + elapsed), so it never looks like
+  a seek to the start.
 - A progress report for an unknown session counts as a start (playback that began before Jellyfin or the plugin
   started, or a device that was just selected). A report with a different item restarts the session.
 - A filter change is applied immediately: sessions that no longer match are disposed, playing sessions that now
@@ -78,16 +80,42 @@ Rules the monitor implements:
   memory.
 - A session that throws is logged and does not stop the monitor; the next report retries the start.
 
-## Planned pipeline (M1-M3)
+## Streaming (M1)
 
 ```mermaid
 flowchart LR
     Events["Jellyfin session events"] --> Monitor["PlaybackMonitor<br/>(filter devices/users)"]
-    Monitor -->|start/pause/seek/stop + position| Session["GrabSession<br/>(one per target)"]
-    Session --> Source["Frame source<br/>FFmpeg: -ss pos, HW decode,<br/>GPU scale, tonemap, rgb24"]
-    Source -->|"frames + timestamps"| Sync["Sync engine<br/>clock = last report + elapsed<br/>+ latency offset"]
-    Sync -->|"frame due now"| Sink["HyperionClient (reconnecting)"]
+    Monitor -->|start/update/stop| Session["StreamingGrabSession<br/>(one per target)"]
+    Session -->|"item + media source id"| Resolver["IVideoInputResolver<br/>(file: path, size, codec)"]
+    Session --> Source["FfmpegFrameSource<br/>-ss pos, HW decode, GPU scale, rgb24"]
+    Source -->|"pooled frames + positions"| Session
+    Session -->|"newest due frame, every 1/fps"| Sink["HyperionClient"]
 ```
+
+| Component | Responsibility |
+| --- | --- |
+| `StreamingGrabSessionFactory` | `IGrabSessionFactory` for real streaming; its internal constructor takes the frame source and Hyperion connection as delegates so tests can replace them |
+| `StreamingGrabSession` | One playback: reads the settings, resolves the video, starts FFmpeg at the estimated position, connects to Hyperion and paces frames ([ADR 0008](adr/0008-streaming-session-pacing.md)) |
+| `IVideoInputResolver` / `JellyfinVideoInputResolver` | Playing item + media source id → `VideoInput` (`file:` path, display size, codec), or the reason it is not supported (Live TV, remote, `.strm`, disc folders) |
+| `IStreamingSettingsProvider` / `PluginStreamingSettingsProvider` | Hyperion host/port/priority and frame rate from the saved configuration, read once per playback start |
+| `IFrameSource`, `IHyperionConnection` (internal) | The parts of `FfmpegFrameSource` and `HyperionClient` the session uses; fakes implement them in tests |
+
+How a session behaves:
+
+- **Start:** everything runs on the session's own task, so `Start` returns at once. Settings or media the plugin
+  cannot use are logged (Warning / Information) and the session idles until playback stops. FFmpeg starts first;
+  Hyperion is connected when the first frame is due, so a slow file open cannot hit Hyperion's idle timeout.
+- **Pacing:** a `PeriodicTimer` ticks at the frame rate. Each tick estimates the position (last report + elapsed,
+  frozen while paused) and sends the newest decoded frame at or before it; older due frames are dropped and go back to
+  the pool. Late frames are never queued: a slow Hyperion, network or decoder means fewer frames.
+- **Keep-alive:** without a new frame for 500 ms (pause, end of video, slow decoder) the last frame is resent, so
+  Hyperion does not close the idle connection.
+- **Seek:** a report more than 1 s away from the estimate restarts FFmpeg at the new position. A decoder lagging more
+  than 2 s behind is restarted too, after a 5 s grace period for opening and seeking the file.
+- **Stop and failures:** stopping, a lost connection or a decoding error kills FFmpeg and disposes the Hyperion client
+  (which clears the priority) in parallel. `DisposeAsync` waits at most 5 s, so the monitor never stalls.
+- **Logging:** Information for start (`Streaming 160x90 at 25 fps …`) and stop (frames sent, dropped, decoder
+  restarts), Debug for seeks and pause changes, nothing per frame.
 
 Design rules for the pipeline:
 
@@ -96,10 +124,13 @@ Design rules for the pipeline:
 - **The pipe is the throttle.** FFmpeg writes raw RGB to stdout; when we stop reading (pause), it blocks instead of
   decoding ahead. Seeks restart FFmpeg at the new position.
 - **Timestamps, not wall-clock guesses.** A constant-frame-rate filter makes frame *n* correspond to
-  `start + n / fps`, so the sync engine can schedule each frame against the estimated client position.
+  `start + n / fps`, so each frame is scheduled against the estimated client position.
 - **One session per target** (TV/Hyperion pair); sessions are independent and cancellable.
 - **Process hygiene.** FFmpeg processes are always killed and awaited when a session ends, including on errors and
   server shutdown.
+
+Still planned: reconnecting after Hyperion restarts (M1), a per-device latency offset and a precise Kodi clock (M2),
+HDR tone mapping and multiple targets (M3). See the [roadmap](../roadmap.md).
 
 ## Threading
 

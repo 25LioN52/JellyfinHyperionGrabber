@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
+using Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.HyperionGrabber.Configuration;
@@ -25,6 +27,9 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the priority to register (100-199; lower wins).</summary>
     public int HyperionPriority { get; set; } = HyperionDefaults.Priority;
 
+    /// <summary>Gets or sets the number of frames per second sent to Hyperion during playback (1-60).</summary>
+    public int FramesPerSecond { get; set; } = FfmpegFrameSourceOptions.DefaultFramesPerSecond;
+
     /// <summary>Gets or sets a value indicating whether playback on the selected devices drives the lights.</summary>
     public bool PlaybackEnabled { get; set; }
 
@@ -35,6 +40,16 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the users whose playback drives the lights. None selected means every user.</summary>
     [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration (XML on disk, JSON from the configuration page), which needs a setter.")]
     public Collection<PlaybackUserSelection> PlaybackUsers { get; set; } = [];
+
+    /// <summary>Creates the streaming settings described by these settings.</summary>
+    /// <returns>The settings; <see cref="StreamingSettings.Hyperion"/> is <see langword="null"/> without a host.</returns>
+    public StreamingSettings ToStreamingSettings() => new()
+    {
+        Hyperion = string.IsNullOrWhiteSpace(HyperionHost)
+            ? null
+            : new HyperionClientOptions { Host = HyperionHost.Trim(), Port = HyperionPort, Priority = HyperionPriority },
+        FramesPerSecond = FramesPerSecond,
+    };
 
     /// <summary>Creates the playback filter described by these settings.</summary>
     /// <returns>The filter.</returns>

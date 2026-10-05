@@ -43,6 +43,9 @@ If the colors are on the wrong sides, or the light runs counter-clockwise, fix t
 
 ## 4. Watch something
 
-To prepare for streaming, open the **Playback** section, turn on **Follow playback** and select your TV; the plugin then recognizes playback on it (see [Configuration](user-guide/configuration.md#playback)). Streaming the picture during playback arrives in a later release *(planned)*. Your configuration is kept when you update.
+Open the **Playback** section, turn on **Follow playback**, select your TV and press **Save** (see
+[Configuration](user-guide/configuration.md#playback)). Play a video from your library on the TV: the LEDs follow the
+picture, hold it while paused and go back to Hyperion's own sources when you stop. If they do not, see
+[Troubleshooting](user-guide/troubleshooting.md#the-lights-do-not-follow-a-video).
 Follow the [roadmap](roadmap.md) or watch the [GitHub repository](https://github.com/25LioN52/JellyfinHyperionGrabber)
 for releases.

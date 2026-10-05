@@ -12,8 +12,8 @@
 
 | Project | Covers |
 | --- | --- |
-| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg |
-| `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour |
+| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames) and end-to-end streaming (real FFmpeg → fake server) |
+| `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour, media source resolution |
 | `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `TestHelpers` (shared, not a test project) |
 
 ## The fake Hyperion server
@@ -38,6 +38,12 @@ throttling and that the process is killed.
 
 - FFmpeg is taken from `HYPERION_GRABBER_FFMPEG` or the `PATH`; without it these tests are **skipped**.
 - `HYPERION_GRABBER_REQUIRE_FFMPEG=true` makes a missing FFmpeg a failure. CI on Linux installs FFmpeg and sets it.
+- `StreamingIntegrationTests` use the same clip end to end: fake playback events go through `PlaybackMonitor` and a
+  real `StreamingGrabSessionFactory` (FFmpeg reading `file:<clip>`, `HyperionClient`) to `FakeHyperionServer`, which
+  must receive the frame at the playback position, frames in playback order and pace, and a `Clear` on stop.
+- `StreamingGrabSessionTests` drive a session tick by tick with `FakeTimeProvider`, a `FakeFrameSource` (frame *n*
+  carries *n* in its first byte) and a `RecordingConnection` that can hold or fail sends; they cover dropping,
+  pause keep-alive, seeks, a lagging decoder, failures and the bounded dispose.
 - Hardware decoding is only tested on request: set `HYPERION_GRABBER_HWACCEL` to `Nvenc`, `Qsv`, `Vaapi`, `Amf`,
   `VideoToolbox` or `Rkmpp` (and `HYPERION_GRABBER_HWDEVICE`, for example `/dev/dri/renderD128`, for VA-API / QSV on
   Linux) and run `dotnet test --solution Jellyfin.Plugin.HyperionGrabber.slnx -c Release -- --filter-method "*WithConfiguredHardware*"`.

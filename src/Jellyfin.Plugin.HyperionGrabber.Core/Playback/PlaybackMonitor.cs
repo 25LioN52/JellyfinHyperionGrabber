@@ -166,6 +166,12 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
             && _playing.TryGetValue(sessionId, out var tracked)
             && tracked.State.ItemId == state.ItemId)
         {
+            if (playbackEvent.Position is null)
+            {
+                // Without a position the report would read as a seek to the start; keep the estimate instead.
+                state = state with { Position = tracked.State.EstimatePosition(report.ReceivedAt) };
+            }
+
             _playing[sessionId] = tracked with { State = state };
             return;
         }

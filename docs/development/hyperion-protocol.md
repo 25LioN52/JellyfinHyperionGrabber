@@ -59,9 +59,10 @@ of slot *n* is `4 + 2n`):
 4. **Clear** with our priority to release it. `priority = -1` clears **all** priorities: never send it.
 5. **Disconnect**: both servers clear the client's priority when the connection closes.
 
-**Idle timeout.** Both servers close a connection that has not sent anything for a configured time. To hold the last
-frame during pause, resend it periodically (well inside the timeout). Use the server's setting, not a guess, when M2
-implements this.
+**Idle timeout.** Both servers close a connection that has not sent anything for a configured time (the FlatBuffers
+server's `timeout`, 5 s by default). The FlatBuffers protocol cannot read that setting, so a streaming session resends
+its last frame whenever no new frame was sent for 500 ms (pause, end of the video, slow decoder): safe for any timeout
+of 1 s or more ([ADR 0008](adr/0008-streaming-session-pacing.md)).
 
 **Images vs LED count.** Hyperion averages the picture regions configured in its LED layout, so a small picture
 (around 64-160 px wide) is enough and keeps CPU use on the Hyperion side low. Keep the source aspect ratio.

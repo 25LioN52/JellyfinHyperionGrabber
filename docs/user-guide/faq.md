@@ -18,10 +18,10 @@ Both work the same way with this plugin. HyperHDR focuses on HDR capture and has
 Hyperion.ng has a larger device list. Use the one you already have.
 
 **Will it slow down my server?**
-The plugin decodes at a very small output size and *(planned)* uses Jellyfin's hardware acceleration (for example
-Intel QuickSync). On a modern Intel NAS CPU a 4K stream with hardware decoding is light. Without hardware decoding,
-4K HEVC can be heavy on low-power CPUs, so the plugin will reduce its frame rate rather than compete with real
-transcodes.
+The plugin decodes at a very small output size and uses Jellyfin's hardware acceleration (for example Intel
+QuickSync). On a modern Intel NAS CPU a 4K stream with hardware decoding is light. Without hardware decoding, 4K HEVC
+can be heavy on low-power CPUs: lower the **Frame rate** on the plugin page. When decoding cannot keep up, the plugin
+skips pictures rather than falling behind.
 
 **Does it work with HDR and Dolby Vision?**
 That is a planned headline feature: HDR10 and Dolby Vision are tone-mapped to SDR colors before sending, so the LEDs
@@ -31,7 +31,7 @@ are not washed out.
 They are not part of the decoded video, so the lights follow the film only, which is usually what you want.
 
 **What happens when I pause?**
-By default the LEDs hold the last frame *(planned)*. When playback stops, the plugin releases its Hyperion priority
+The LEDs hold the last frame. When playback stops, the plugin releases its Hyperion priority
 and Hyperion falls back to whatever it shows otherwise (effect, other grabber or off).
 
 **Is anything sent to the internet?**
