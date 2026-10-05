@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.1.0...v0.2.0) (2026-10-05)
+
+
+### Features
+
+* ffmpeg frame source with hardware acceleration ([#15](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/15)) ([81550af](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/81550afe2f13a3effa955f5a646eecf58ff6d341))
+* playback monitor with device and user filter ([#14](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/14)) ([11a3a26](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/11a3a2679395fa2482a787bfbc625bb4960ef1db))
+* stream frames to Hyperion during playback ([#20](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/20)) ([2d369c5](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/2d369c5063be48d2a27d9b23d7a2babdca207298))
+
+
+### Bug Fixes
+
+* use an existing Jellyfin 12 image tag in the dev test bed ([#17](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/17)) ([75c0a80](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/75c0a802f7970a581e1c3c0df11b80a2f8d8c644))
+
 ## 0.1.0 (2026-10-04)
 
 
