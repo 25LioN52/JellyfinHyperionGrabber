@@ -56,6 +56,22 @@ When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` t
 mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
 hardware decoding for the video's codec in Jellyfin.
 
+## The lights are late or early
+
+The plugin sends each picture when the client's reported playback position reaches it. The client, Hyperion's
+smoothing, the network and the LED controller each add a little delay, and the sum differs per setup (around a second
+with Kodi on a Raspberry Pi and WLED is not unusual). Because the server decodes ahead of the TV, the plugin can send
+pictures early to cancel it:
+
+1. Play a video with clear scene cuts and watch when the LEDs change compared to the TV.
+2. Lights change **after** the picture: set **Light timing offset (ms)** to a positive value, for example `500`;
+   **before** the picture: a negative value.
+3. Save, start the video again (the offset applies from the next playback) and adjust in steps of 100-200 ms.
+
+Also check Hyperion's own delay: **Configuration → Image Processing → Smoothing** (Hyperion.ng) adds its smoothing
+time and any *update delay* to every change. A shorter smoothing time or an update delay of 0 makes the lights react
+faster.
+
 ## Docker on a NAS (for example UGREEN, Synology, Unraid)
 
 - Jellyfin in a container reaches Hyperion on the same NAS through the NAS's LAN IP (bridge network) or

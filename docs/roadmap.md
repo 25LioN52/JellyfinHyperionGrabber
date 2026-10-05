@@ -27,7 +27,9 @@ Milestones are deliberately small so each one ships something usable. Items beco
       with M1 streaming)*
 - [x] Seek detection and restart at the new position *(shipped with M1 streaming)*
 - [ ] Drift correction between position reports
-- [ ] Per-device latency offset (ms), with a calibration video and guide
+- [x] Release the lights after a long pause (default 15 s), resume at the playback position *(shipped in 0.3)*
+- [x] Light timing offset (ms), one value for all devices *(shipped in 0.3)*
+- [ ] Per-device timing offset, with a calibration video and guide
 - [ ] Optional precise clock for Kodi clients via Kodi's JSON-RPC (position and events in real time)
 - [ ] Playback speed changes
 

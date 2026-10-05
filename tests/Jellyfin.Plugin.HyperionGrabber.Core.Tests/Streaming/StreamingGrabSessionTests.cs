@@ -25,10 +25,10 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 5, 20, 0, 0, TimeSpan.Zero));
-    private readonly RecordingConnection _connection = new();
     private readonly ConcurrentQueue<FakeFrameSource> _sources = new();
     private readonly FakeLoggerProvider _logs = new();
     private readonly LoggerFactory _loggerFactory;
+    private RecordingConnection _connection = new();
     private StreamingSettings _settings = new() { Hyperion = new HyperionClientOptions { Host = "hyperion.local" }, FramesPerSecond = 10 };
     private VideoInputResult _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
     private Exception? _connectFailure;
@@ -223,6 +223,108 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task LatencyOffset_DecodesAndSendsFramesEarlier()
+    {
+        _settings = _settings with { LatencyOffset = TimeSpan.FromMilliseconds(300) };
+        var session = await StartStreamingAsync();
+        Source.Push(5); // Frames at 300, 400, 500, ... ms.
+
+        await TickAsync(session); // 100 ms of playback + 300 ms offset: frame 1 (400 ms) is due.
+
+        Assert.Equal(TimeSpan.FromMilliseconds(300), Source.Options.StartPosition);
+        Assert.Equal([1], _connection.Images);
+    }
+
+    [Fact]
+    public async Task NegativeLatencyOffset_NeverDecodesBeforeTheStart()
+    {
+        _settings = _settings with { LatencyOffset = TimeSpan.FromMilliseconds(-500) };
+
+        await StartStreamingAsync();
+
+        Assert.Equal(TimeSpan.Zero, Source.Options.StartPosition);
+    }
+
+    [Fact]
+    public async Task LatencyOffset_IsNotMistakenForASeek()
+    {
+        _settings = _settings with { LatencyOffset = TimeSpan.FromSeconds(1.5) };
+        var session = await StartStreamingAsync();
+        Source.Push(3);
+        await TickAsync(session);
+
+        session.Update(State(TimeSpan.FromMilliseconds(100))); // The report matches the estimate (without the offset).
+        await TickAsync(session);
+
+        Assert.Single(_sources);
+        Assert.Equal(0, session.Restarts);
+    }
+
+    [Fact]
+    public async Task LongPause_ReleasesHyperionAndDecoding_ResumeStreamsAgain()
+    {
+        _settings = _settings with { PauseRelease = TimeSpan.FromSeconds(1) };
+        var session = await StartStreamingAsync();
+        Source.Push(10);
+        await TickAsync(session);
+        var first = Source;
+        var firstConnection = _connection;
+
+        session.Update(State(TimeSpan.FromMilliseconds(100), paused: true));
+        await TickAsync(session, 12);
+        var sentBeforeRelease = firstConnection.Images.Count;
+        await TickAsync(session, 10);
+
+        Assert.True(first.IsDisposed);
+        Assert.True(firstConnection.IsDisposed); // Closing the connection clears the priority: Hyperion shows its default.
+        Assert.Equal(sentBeforeRelease, firstConnection.Images.Count); // No keep-alive while released.
+        AssertLogged(LogLevel.Information, "released Hyperion until playback resumes");
+
+        session.Update(State(TimeSpan.FromMilliseconds(100)));
+        await TickAsync(session);
+
+        Assert.Equal(2, _sources.Count);
+        Assert.Equal(TimeSpan.FromMilliseconds(200), Source.Options.StartPosition);
+        AssertLogged(LogLevel.Information, "streaming to Hyperion again");
+
+        Source.Push(3); // Frames at 200, 300, 400 ms.
+        await TickAsync(session);
+
+        Assert.Equal(2, _connects);
+        Assert.NotSame(firstConnection, _connection);
+        Assert.Equal([1], _connection.Images);
+    }
+
+    [Fact]
+    public async Task PauseRelease_Zero_KeepsHoldingTheFrame()
+    {
+        _settings = _settings with { PauseRelease = TimeSpan.Zero };
+        var session = await StartStreamingAsync();
+        Source.Push(10);
+        await TickAsync(session);
+
+        session.Update(State(TimeSpan.FromMilliseconds(100), paused: true));
+        await TickAsync(session, 30);
+
+        Assert.False(Source.IsDisposed);
+        Assert.False(_connection.IsDisposed);
+        Assert.True(_connection.Images.Count > 3); // Keep-alive resends of frame 1.
+        Assert.All(_connection.Images, image => Assert.Equal(1, image));
+    }
+
+    [Fact]
+    public async Task Start_WithInvalidStreamingSettings_LogsAndDoesNotStream()
+    {
+        _settings = _settings with { LatencyOffset = TimeSpan.FromSeconds(5) };
+
+        var session = Start(State(TimeSpan.Zero));
+
+        Assert.False(await session.StreamingStarted.WaitAsync(Ct));
+        Assert.Empty(_sources);
+        AssertLogged(LogLevel.Warning, "Light timing offset must be between -2000 and 2000 ms.");
+    }
+
+    [Fact]
     public async Task DecodingFailure_StopsAndReleasesHyperion()
     {
         var session = await StartStreamingAsync();
@@ -409,6 +511,11 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
             (options, cancellationToken) =>
             {
                 Interlocked.Increment(ref _connects);
+                if (_connection.IsDisposed)
+                {
+                    _connection = new RecordingConnection();
+                }
+
                 _connection.Options = options;
                 return _connectFailure is null
                     ? Task.FromResult<IHyperionConnection>(_connection)

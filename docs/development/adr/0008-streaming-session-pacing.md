@@ -25,7 +25,8 @@ Options considered:
 Each playback gets a `StreamingGrabSession` that runs one loop on its own task, ticking at the configured frame rate
 (`PeriodicTimer` on the injected `TimeProvider`, default 25 fps). On every tick it:
 
-1. Estimates the playback position: last reported position plus the time since the report, frozen while paused.
+1. Estimates the playback position: last reported position plus the time since the report, frozen while paused,
+   plus the configured light timing offset (seek detection compares reports without the offset).
 2. Treats a report that moved the position by more than **1 s** from the estimate as a seek and restarts FFmpeg there.
 3. Takes the **newest decoded frame at or before the position** without waiting (`TryReadFrame`); older due frames
    are disposed (returned to the pool) and counted as dropped. A frame that is not due yet is held for a later tick.
@@ -37,6 +38,11 @@ Each playback gets a `StreamingGrabSession` that runs one loop on its own task, 
 Hyperion is connected at the first tick that has something to send, not when the session starts: opening and seeking
 a large file (a NAS disk spinning up) can take longer than Hyperion's idle timeout, which would close a connection that
 has nothing to send yet. It also means Hyperion's priority is only taken once there is a picture.
+
+A pause longer than the configured release time (default **15 s**, 0 = never) stops FFmpeg and closes the Hyperion
+connection, so Hyperion shows its default; resuming starts FFmpeg at the position and reconnects with the first frame.
+Holding the frame forever kept the LEDs on a still picture during long pauses, which users did not want (found in the
+first real test).
 
 A failure (Hyperion unreachable or lost, FFmpeg error) ends the stream; disposing FFmpeg and the Hyperion connection
 (which clears the priority) runs in parallel. `DisposeAsync` waits at most **5 s** and otherwise lets the release
@@ -51,7 +57,8 @@ finish in the background, so the playback monitor never stalls ([`IGrabSession`]
 - The steady-state loop allocates nothing of its own (measured: under 2 bytes per tick, which is noise);
   `HyperionClient.SendImageAsync` is unchanged from M0.
 - While paused, FFmpeg is blocked on the full pool and Hyperion gets two small frames per second (about 85 KB/s).
-- Seeks are detected from reports, so their accuracy depends on the client's reports; the latency offset and
-  precise Kodi clock remain M2 work. Reconnecting after a lost connection is a separate feature (roadmap M1).
+- Seeks are detected from reports, so their accuracy depends on the client's reports. A global light timing offset
+  cancels the constant delay (about 1 s in the first real test with Kodi and WLED); a per-device offset and a precise
+  Kodi clock remain M2 work. Reconnecting after a lost connection is a separate feature (roadmap M1).
 - Tests drive the loop with `FakeTimeProvider`, a fake frame source and a recording connection, plus an end-to-end
   test with real FFmpeg and `FakeHyperionServer`.

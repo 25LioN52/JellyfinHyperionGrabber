@@ -31,8 +31,9 @@ Choose which playback drives the lights. Nothing happens until you turn on **Fol
 one device.
 
 While a matching video plays, the plugin decodes it on the server and sends the picture to Hyperion. Pausing holds
-the last picture, seeking jumps with the video, and stopping releases the priority so Hyperion falls back to whatever
-it shows otherwise. Only videos from your libraries are streamed; see
+the last picture; after a longer pause (15 s by default) the lights go back to Hyperion's default until you resume.
+Seeking jumps with the video, and stopping releases the priority so Hyperion falls back to whatever it shows
+otherwise. Only videos from your libraries are streamed; see
 [what is not supported](troubleshooting.md#the-lights-do-not-follow-a-video).
 
 !!! note "Early preview"
@@ -43,6 +44,8 @@ it shows otherwise. Only videos from your libraries are streamed; see
 | --- | --- | --- |
 | **Follow playback** | off | Turns playback detection on. |
 | **Frame rate** | `25` | Pictures per second sent to Hyperion, 1-60. 25 looks smooth; lower it (for example to 10-15) if the Jellyfin server is short on CPU, especially without hardware decoding. Applies from the next playback. |
+| **Light timing offset (ms)** | `0` | Shifts the lights against the picture, -2000 to 2000. If the lights change **after** the TV picture, increase it; if they change **before**, make it negative. See [Lights are late or early](troubleshooting.md#the-lights-are-late-or-early). Applies from the next playback. |
+| **Release the lights after pausing for (seconds)** | `15` | While paused the lights hold the picture; after this time FFmpeg stops and Hyperion shows its default (effect, other source or off) until you resume. `0` holds the picture for the whole pause. |
 | **Devices** | none | Devices whose playback drives the lights, usually the TV your LEDs are mounted on. With none selected, no playback does. |
 | **Users (optional)** | none | Only playback by these users drives the lights. Leave all unticked to react to every user. |
 
@@ -59,5 +62,5 @@ The picture is decoded with Jellyfin's FFmpeg and the hardware acceleration set 
 
 ## More playback settings *(planned)*
 
-Later releases add: a latency offset, HDR tone mapping, and multiple Hyperion targets (one per TV). See the
+Later releases add: a timing offset per device, HDR tone mapping, and multiple Hyperion targets (one per TV). See the
 [roadmap](../roadmap.md).
