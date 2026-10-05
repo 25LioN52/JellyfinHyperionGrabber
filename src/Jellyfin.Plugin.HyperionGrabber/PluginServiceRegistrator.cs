@@ -1,5 +1,7 @@
 using System;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
+using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
+using Jellyfin.Plugin.HyperionGrabber.Frames;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Plugins;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,5 +19,6 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
     {
         serviceCollection.TryAddSingleton(TimeProvider.System);
         serviceCollection.AddSingleton<HyperionConnectionTester>();
+        serviceCollection.AddSingleton<IFfmpegSettingsProvider, JellyfinFfmpegSettingsProvider>();
     }
 }

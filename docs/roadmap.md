@@ -14,7 +14,7 @@ Milestones are deliberately small so each one ships something usable. Items beco
 ## M1: Playback to LEDs
 
 - [ ] Playback monitor: react to playback start/stop on selected devices (device and user filter on the config page)
-- [ ] Frame source: Jellyfin's FFmpeg decodes the playing media source from its position, scaled on the GPU to
+- [x] Frame source: Jellyfin's FFmpeg decodes the playing media source from its position, scaled on the GPU to
       about 160 px wide, keeping the aspect ratio; uses Jellyfin's hardware acceleration settings, CPU fallback
 - [ ] Stream to Hyperion at a configurable frame rate (default 25), bounded buffers, frame dropping under load
 - [ ] Reconnect with backoff when Hyperion restarts; release the priority on stop

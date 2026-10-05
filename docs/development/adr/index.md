@@ -12,3 +12,4 @@ accidentally undo. Superseded records stay, marked *Superseded by ...*.
 | [0004](0004-core-library-boundary.md) | Keep all logic in a Core library without Jellyfin references | Accepted |
 | [0005](0005-documentation-tooling.md) | Docs as Markdown in the repository, built with Material for MkDocs | Accepted |
 | [0006](0006-release-automation.md) | release-please releases; plugin manifest generated from release assets | Accepted |
+| [0007](0007-ffmpeg-frame-source.md) | Decode with Jellyfin's FFmpeg as a child process, raw frames over a pipe into a fixed buffer pool | Accepted |

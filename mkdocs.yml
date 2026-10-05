@@ -96,3 +96,4 @@ nav:
           - 0004 Core library boundary: development/adr/0004-core-library-boundary.md
           - 0005 Documentation tooling: development/adr/0005-documentation-tooling.md
           - 0006 Release automation: development/adr/0006-release-automation.md
+          - 0007 FFmpeg frame source: development/adr/0007-ffmpeg-frame-source.md

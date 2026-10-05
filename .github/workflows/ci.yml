@@ -35,6 +35,13 @@ jobs:
           dotnet-version: 9.0.x
           global-json-file: global.json
 
+      - name: Install FFmpeg (frame source tests)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends ffmpeg
+          echo "HYPERION_GRABBER_REQUIRE_FFMPEG=true" >> "$GITHUB_ENV"
+
       - name: Restore
         run: dotnet restore ${{ env.SOLUTION }}
 
