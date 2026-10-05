@@ -4,9 +4,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
-namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests;
+namespace Jellyfin.Plugin.HyperionGrabber.TestSupport;
 
-internal static class TestHelpers
+/// <summary>
+/// Helpers shared by the test projects.
+/// </summary>
+public static class TestHelpers
 {
     public static async Task WaitUntilAsync(Func<bool> condition, TimeSpan? timeout = null)
     {

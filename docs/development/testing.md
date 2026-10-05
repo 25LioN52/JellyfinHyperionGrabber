@@ -14,7 +14,7 @@
 | --- | --- |
 | `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester |
 | `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour |
-| `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `OfficialHyperionCodec` (shared, not a test project) |
+| `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `TestHelpers` (shared, not a test project) |
 
 ## The fake Hyperion server
 
