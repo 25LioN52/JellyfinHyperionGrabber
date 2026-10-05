@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -8,16 +9,24 @@ using Jellyfin.Plugin.HyperionGrabber.Api;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
+using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
 using Xunit;
 
 namespace Jellyfin.Plugin.HyperionGrabber.Tests.Api;
 
 public class HyperionGrabberControllerTests
 {
-    private readonly HyperionGrabberController _controller = new(new HyperionConnectionTester(NullLogger<HyperionClient>.Instance, TimeProvider.System));
+    private readonly ISessionManager _sessionManager = Substitute.For<ISessionManager>();
+    private readonly HyperionGrabberController _controller;
+
+    public HyperionGrabberControllerTests()
+    {
+        _controller = new(new HyperionConnectionTester(NullLogger<HyperionClient>.Instance, TimeProvider.System), _sessionManager);
+    }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -96,6 +105,40 @@ public class HyperionGrabberControllerTests
 
         Assert.Contains("duration", response.Message, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void GetClients_ListsEachDeviceOnceMostRecentFirstAndUsersByName()
+    {
+        var alice = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var bob = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var now = new DateTime(2026, 10, 5, 20, 0, 0, DateTimeKind.Utc);
+        _sessionManager.Sessions.Returns(
+        [
+            Session("kodi", "Living room", "Kodi", bob, "bob", now.AddMinutes(-10)),
+            Session("phone", "Pixel", "Jellyfin Android", alice, "alice", now.AddMinutes(-5)),
+            Session("kodi", "Living room", "Kodi", alice, "alice", now),
+            Session("anonymous", null, null, Guid.Empty, null, now.AddHours(-1)),
+        ]);
+
+        var response = Assert.IsType<PlaybackClientsResponse>(Assert.IsType<OkObjectResult>(_controller.GetClients().Result).Value);
+
+        Assert.Equal(["kodi", "phone", "anonymous"], response.Devices.Select(d => d.Id));
+        Assert.Equal(new PlaybackClientDevice("kodi", "Living room", "Kodi", "alice", now), response.Devices[0]);
+        Assert.Equal("anonymous", response.Devices[2].Name);
+        Assert.Equal([new PlaybackClientUser(alice, "alice"), new PlaybackClientUser(bob, "bob")], response.Users);
+    }
+
+    private static SessionInfo Session(string deviceId, string? deviceName, string? client, Guid userId, string? userName, DateTime lastActivity)
+        => new(Substitute.For<ISessionManager>(), NullLogger.Instance)
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            DeviceId = deviceId,
+            DeviceName = deviceName,
+            Client = client,
+            UserId = userId,
+            UserName = userName,
+            LastActivityDate = lastActivity,
+        };
 
     private static HyperionTargetRequest Target(FakeHyperionServer server) => new() { Host = server.Host, Port = server.Port };
 

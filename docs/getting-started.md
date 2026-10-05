@@ -43,6 +43,6 @@ If the colors are on the wrong sides, or the light runs counter-clockwise, fix t
 
 ## 4. Watch something
 
-Streaming during playback arrives in the next release *(planned)*. Your configuration is kept when you update.
+To prepare for streaming, open the **Playback** section, turn on **Follow playback** and select your TV; the plugin then recognizes playback on it (see [Configuration](user-guide/configuration.md#playback)). Streaming the picture during playback arrives in a later release *(planned)*. Your configuration is kept when you update.
 Follow the [roadmap](roadmap.md) or watch the [GitHub repository](https://github.com/25LioN52/JellyfinHyperionGrabber)
 for releases.

@@ -56,6 +56,21 @@ carries the session (device, client, user), the item, `PlaybackPositionTicks`, `
   planned for precise sync on Kodi clients (M2).
 - Event handlers run on Jellyfin's threads: post the change to the session and return immediately.
 
+How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/PlaybackEventMapper.cs`):
+
+| Core `PlaybackEvent` | Jellyfin source |
+| --- | --- |
+| `SessionId`, `DeviceId`, `DeviceName`, `Client`, `UserId` | `args.Session` (falls back to `args.DeviceId`, `DeviceName`, `ClientName`) |
+| `ItemId` | `args.Item.Id`; start and progress without an item are ignored |
+| `MediaSourceId`, `Position`, `IsPaused` | `args.MediaSourceId`, `args.PlaybackPositionTicks` (100 ns ticks = `TimeSpan` ticks), `args.IsPaused` |
+
+- The device and user lists on the configuration page come from `ISessionManager.Sessions`
+  (`GET HyperionGrabber/Clients`). `IUserManager.Users` exists in 10.11 but not in 12, so users come from sessions
+  too. Saved selections keep a display name so offline devices still show.
+- Jellyfin creates the plugin instance itself and does not register it for dependency injection; services read the
+  configuration through `Plugin.Instance` (only in `PluginPlaybackFilterSource`) and react to
+  `Plugin.ConfigurationChanged`.
+
 ## Media and decoding
 
 - Decode the **media source that is playing** (`MediaSourceId`), from its path, never through Jellyfin's HTTP streaming

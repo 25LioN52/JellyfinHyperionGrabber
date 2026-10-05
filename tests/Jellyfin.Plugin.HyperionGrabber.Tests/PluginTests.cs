@@ -72,6 +72,7 @@ public class PluginTests
 
         Assert.Contains("'HyperionGrabber/TestConnection'", script, StringComparison.Ordinal);
         Assert.Contains("'HyperionGrabber/TestPattern'", script, StringComparison.Ordinal);
+        Assert.Contains("'HyperionGrabber/Clients'", script, StringComparison.Ordinal);
     }
 
     private static Plugin CreatePlugin()

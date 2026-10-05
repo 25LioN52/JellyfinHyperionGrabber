@@ -180,6 +180,10 @@ public sealed partial class FfmpegFrameSource : IAsyncDisposable
         }
     }
 
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Top level of the background task: any failure must reach the consumer as a FrameSourceException instead of looking like the end of the video, and DisposeAsync must not rethrow it.")]
     private async Task RunAsync()
     {
         var token = _stopping.Token;
@@ -219,6 +223,11 @@ public sealed partial class FfmpegFrameSource : IAsyncDisposable
         {
             Log.Failed(_logger, ex.Message);
             error = new FrameSourceException("Reading frames from FFmpeg failed: " + ex.Message, ex);
+        }
+        catch (Exception ex)
+        {
+            Log.Unexpected(_logger, ex);
+            error = new FrameSourceException("Decoding failed unexpectedly: " + ex.Message, ex);
         }
         finally
         {
@@ -410,5 +419,8 @@ public sealed partial class FfmpegFrameSource : IAsyncDisposable
 
         [LoggerMessage(EventId = 7, Level = LogLevel.Trace, Message = "FFmpeg: {Line}")]
         public static partial void Stderr(ILogger logger, string line);
+
+        [LoggerMessage(EventId = 8, Level = LogLevel.Error, Message = "Decoding failed unexpectedly")]
+        public static partial void Unexpected(ILogger logger, Exception exception);
     }
 }

@@ -35,7 +35,14 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
     {
+        Instance = this;
     }
+
+    /// <summary>
+    /// Gets the loaded plugin. Jellyfin creates the plugin itself and does not register it for dependency injection,
+    /// so services reach the configuration through this property.
+    /// </summary>
+    public static Plugin? Instance { get; private set; }
 
     /// <inheritdoc />
     public override string Name => PluginName;

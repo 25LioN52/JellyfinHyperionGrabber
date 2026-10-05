@@ -37,6 +37,12 @@ function showResult(view, success, message) {
     result.hidden = false;
 }
 
+function showPlaybackResult(view, message) {
+    const result = view.querySelector('#PlaybackResult');
+    result.textContent = message || '';
+    result.hidden = !message;
+}
+
 function setBusy(view, busy) {
     for (const id of ['#HyperionTestConnection', '#HyperionTestPattern']) {
         view.querySelector(id).disabled = busy;
@@ -85,6 +91,77 @@ async function runAction(view, path, extra, pendingMessage) {
     }
 }
 
+// Jellyfin may format GUIDs with or without dashes; compare them normalized.
+function normalizeId(id) {
+    return String(id || '').replace(/-/g, '').toLowerCase();
+}
+
+// Renders one checkbox per entry: everything Jellyfin offers plus saved selections it no longer lists.
+// Names come from Jellyfin clients, so they are only ever set as text.
+function renderChoices(list, offered, selected, emptyText) {
+    const selectedIds = new Set(selected.map(s => normalizeId(s.Id)));
+    const entries = offered.map(o => ({ Id: o.Id, Name: o.Name, Detail: o.Detail }));
+    const offeredIds = new Set(entries.map(e => normalizeId(e.Id)));
+    for (const saved of selected) {
+        if (!offeredIds.has(normalizeId(saved.Id))) {
+            entries.push({ Id: saved.Id, Name: saved.Name || saved.Id, Detail: 'not seen recently' });
+        }
+    }
+
+    list.replaceChildren();
+    if (entries.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'fieldDescription';
+        empty.textContent = emptyText;
+        list.append(empty);
+        return;
+    }
+
+    for (const entry of entries) {
+        // Static markup so Jellyfin upgrades the emby-checkbox (its polyfill breaks createElement(name, { is })).
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = '<label><input is="emby-checkbox" type="checkbox" /><span></span></label>';
+        const label = wrapper.firstElementChild;
+        const input = label.querySelector('input');
+        input.dataset.id = entry.Id;
+        input.dataset.name = entry.Name;
+        input.checked = selectedIds.has(normalizeId(entry.Id));
+        label.querySelector('span').textContent = entry.Detail ? `${entry.Name} (${entry.Detail})` : entry.Name;
+        list.append(label);
+    }
+}
+
+function readChoices(list) {
+    return Array.from(list.querySelectorAll('input[type="checkbox"]'))
+        .filter(input => input.checked)
+        .map(input => ({ Id: input.dataset.id, Name: input.dataset.name }));
+}
+
+function describeDevice(device) {
+    return device.UserName ? `${device.Client}, ${device.UserName}` : device.Client;
+}
+
+async function loadClients(view, selectedDevices, selectedUsers) {
+    let clients = { Devices: [], Users: [] };
+    try {
+        clients = await ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('HyperionGrabber/Clients'), dataType: 'json' });
+        showPlaybackResult(view, null);
+    } catch {
+        showPlaybackResult(view, '✖ Could not load the devices and users from Jellyfin. Saved selections are still shown.');
+    }
+
+    renderChoices(
+        view.querySelector('#PlaybackDeviceList'),
+        (clients.Devices || []).map(d => ({ Id: d.Id, Name: d.Name, Detail: describeDevice(d) })),
+        selectedDevices,
+        'No devices yet. Start playing something on your TV, then press Refresh.');
+    renderChoices(
+        view.querySelector('#PlaybackUserList'),
+        (clients.Users || []).map(u => ({ Id: u.Id, Name: u.Name })),
+        selectedUsers,
+        'No users yet.');
+}
+
 export default function (view) {
     view.addEventListener('viewshow', function () {
         Dashboard.showLoadingMsg();
@@ -92,6 +169,9 @@ export default function (view) {
             view.querySelector('#HyperionHost').value = config.HyperionHost || '';
             view.querySelector('#HyperionPort').value = config.HyperionPort || 19400;
             view.querySelector('#HyperionPriority').value = config.HyperionPriority || 150;
+            view.querySelector('#PlaybackEnabled').checked = config.PlaybackEnabled === true;
+            return loadClients(view, config.PlaybackDevices || [], config.PlaybackUsers || []);
+        }).then(function () {
             Dashboard.hideLoadingMsg();
         }).catch(function () {
             Dashboard.hideLoadingMsg();
@@ -107,6 +187,10 @@ export default function (view) {
         runAction(view, 'HyperionGrabber/TestPattern', { DurationSeconds: 8 }, 'Sending the test pattern for 8 seconds… look at your TV.');
     });
 
+    view.querySelector('#PlaybackRefresh').addEventListener('click', function () {
+        loadClients(view, readChoices(view.querySelector('#PlaybackDeviceList')), readChoices(view.querySelector('#PlaybackUserList')));
+    });
+
     view.querySelector('#HyperionGrabberConfigForm').addEventListener('submit', function (e) {
         e.preventDefault();
         const target = readTarget(view);
@@ -116,11 +200,23 @@ export default function (view) {
             return false;
         }
 
+        const playbackEnabled = view.querySelector('#PlaybackEnabled').checked;
+        const devices = readChoices(view.querySelector('#PlaybackDeviceList'));
+        const users = readChoices(view.querySelector('#PlaybackUserList'));
+        if (playbackEnabled && devices.length === 0) {
+            showPlaybackResult(view, '✖ Select at least one device, or turn off Follow playback.');
+            return false;
+        }
+
+        showPlaybackResult(view, null);
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(HyperionGrabberConfig.pluginUniqueId).then(function (config) {
             config.HyperionHost = target.Host;
             config.HyperionPort = target.Port;
             config.HyperionPriority = target.Priority;
+            config.PlaybackEnabled = playbackEnabled;
+            config.PlaybackDevices = devices;
+            config.PlaybackUsers = users;
             return ApiClient.updatePluginConfiguration(HyperionGrabberConfig.pluginUniqueId, config);
         }).then(function (result) {
             Dashboard.processPluginConfigurationUpdateResult(result);
