@@ -22,7 +22,7 @@ services:
       - ../artifacts/stage/net9.0:/config/plugins/Hyperion Grabber_0.0.0.0
 
   jellyfin-12:
-    image: jellyfin/jellyfin:12.1.0
+    image: jellyfin/jellyfin:12.1
     ports:
       - "8097:8096"
     extra_hosts:
