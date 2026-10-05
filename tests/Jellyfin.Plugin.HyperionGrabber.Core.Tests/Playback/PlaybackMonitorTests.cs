@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
@@ -239,6 +240,21 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
         Assert.Throws<InvalidOperationException>(_monitor.Start);
     }
 
+    [Fact]
+    public async Task UnexpectedFailure_IsLoggedAsCritical()
+    {
+        // Logging is the only code outside the guarded session calls that a test can make throw.
+        var logger = new ThrowingLogger(throwOnEventId: 6); // PlaybackStarted
+        var monitor = new PlaybackMonitor(_factory, _time, logger);
+        monitor.Start();
+        monitor.UpdateFilter(PlaybackFilter.Create(true, ["kodi"], []));
+
+        monitor.Post(Event(PlaybackEventKind.Started, "s1", "kodi"));
+
+        await TestHelpers.WaitUntilAsync(() => logger.CriticalLogged);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => monitor.StopAsync(Ct));
+    }
+
     private static PlaybackEvent Event(PlaybackEventKind kind, string sessionId, string deviceId, TimeSpan? position = null) => new()
     {
         Kind = kind,
@@ -266,5 +282,31 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     {
         var expected = ++_expectedReports;
         return TestHelpers.WaitUntilAsync(() => _monitor.ProcessedReports >= expected);
+    }
+
+    private sealed class ThrowingLogger(int throwOnEventId) : ILogger<PlaybackMonitor>
+    {
+        private volatile bool _criticalLogged;
+
+        public bool CriticalLogged => _criticalLogged;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Critical)
+            {
+                _criticalLogged = true;
+                return;
+            }
+
+            if (eventId.Id == throwOnEventId)
+            {
+                throw new InvalidOperationException("Simulated failure outside a session call.");
+            }
+        }
     }
 }

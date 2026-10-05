@@ -128,11 +128,22 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
                 Interlocked.Increment(ref _processedReports);
             }
         }
+        catch (Exception ex) when (LogFault(ex))
+        {
+            // Not reached: LogFault returns false, so the exception keeps propagating and faults the task.
+        }
         finally
         {
             await StopActiveAsync().ConfigureAwait(false);
             _playing.Clear();
         }
+    }
+
+    /// <summary>Logs an unexpected failure of the processing task, which would otherwise only surface on stop.</summary>
+    private bool LogFault(Exception exception)
+    {
+        Log.MonitorFailed(_logger, exception);
+        return false;
     }
 
     private void Track(Report report)
@@ -303,5 +314,8 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
 
         [LoggerMessage(EventId = 9, Level = LogLevel.Warning, Message = "Dropped a playback report because the queue was full")]
         public static partial void ReportDropped(ILogger logger);
+
+        [LoggerMessage(EventId = 10, Level = LogLevel.Critical, Message = "The playback monitor stopped unexpectedly; the lights no longer follow playback until Jellyfin restarts")]
+        public static partial void MonitorFailed(ILogger logger, Exception exception);
     }
 }

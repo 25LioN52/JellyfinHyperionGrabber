@@ -29,11 +29,11 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool PlaybackEnabled { get; set; }
 
     /// <summary>Gets or sets the devices whose playback drives the lights. None selected means no playback does.</summary>
-    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration with System.Text.Json, which needs a setter.")]
+    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration (XML on disk, JSON from the configuration page), which needs a setter.")]
     public Collection<PlaybackDeviceSelection> PlaybackDevices { get; set; } = [];
 
     /// <summary>Gets or sets the users whose playback drives the lights. None selected means every user.</summary>
-    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration with System.Text.Json, which needs a setter.")]
+    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration (XML on disk, JSON from the configuration page), which needs a setter.")]
     public Collection<PlaybackUserSelection> PlaybackUsers { get; set; } = [];
 
     /// <summary>Creates the playback filter described by these settings.</summary>

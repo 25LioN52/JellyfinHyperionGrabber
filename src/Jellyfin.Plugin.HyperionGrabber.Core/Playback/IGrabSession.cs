@@ -10,7 +10,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 /// members from one task at a time.</para>
 /// <para><see cref="Update"/> must return quickly and must not throw: do the work on the session's own task.
 /// <see cref="IAsyncDisposable.DisposeAsync"/> stops that work and releases the target (for example Hyperion's
-/// priority).</para>
+/// priority). It must complete within a few seconds even when the target or a decoder process hangs (use timeouts and
+/// kill processes): the monitor awaits it before handling the next report, so a hanging dispose stalls the monitor
+/// and its bounded queue starts dropping reports.</para>
 /// </remarks>
 public interface IGrabSession : IAsyncDisposable
 {
