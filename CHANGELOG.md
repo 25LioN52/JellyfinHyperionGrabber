@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.2.0...v0.3.0) (2026-10-05)
+
+
+### Features
+
+* light timing offset and release the lights after a long pause ([#23](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/23)) ([3f41757](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/3f417571a9c6603ceae1d8b9a0dd6f7cf60f7ac0))
+
 ## [0.2.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.1.0...v0.2.0) (2026-10-05)
 
 
