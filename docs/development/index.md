@@ -24,7 +24,7 @@ src/
 tests/
   Jellyfin.Plugin.HyperionGrabber.Core.Tests/
   Jellyfin.Plugin.HyperionGrabber.Tests/
-  Jellyfin.Plugin.HyperionGrabber.TestSupport/   FakeHyperionServer, RecordingSink, official FlatBuffers codec
+  Jellyfin.Plugin.HyperionGrabber.TestSupport/   FakeHyperionServer, RecordingSink, RecordingGrabSessionFactory, TestHelpers, official FlatBuffers codec
 build/          plugin.json, package.ps1, New-PluginManifest.ps1, docker-compose.dev.yml
 docs/           this site
 .claude/        agent rules and skills;  AGENTS.md / CLAUDE.md at the root

@@ -1,4 +1,4 @@
-<div id="HyperionGrabberConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button" data-controller="__plugin/HyperionGrabberJs">
+<div id="HyperionGrabberConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-checkbox" data-controller="__plugin/HyperionGrabberJs">
     <div data-role="content">
         <div class="content-primary">
             <div class="verticalSection">
@@ -8,7 +8,7 @@
                 </div>
                 <p>Streams the video you are watching to <b>Hyperion.ng</b> or <b>HyperHDR</b> for ambient lighting.
                     LED layout, colors and smoothing are configured in Hyperion; this plugin only sends the picture.</p>
-                <p class="fieldDescription">Early preview: this version tests the connection and your LED layout. Streaming during playback arrives in the next release.</p>
+                <p class="fieldDescription">Early preview: this version tests the connection and your LED layout, and recognizes playback on the devices you select (shown in the Jellyfin log). Sending the picture to Hyperion during playback arrives in a later release.</p>
             </div>
 
             <form id="HyperionGrabberConfigForm">
@@ -43,6 +43,31 @@
                     </button>
                     <div class="fieldDescription">The test pattern shows red at the top, green on the right, blue at the bottom and yellow on the left, with a white light running clockwise from the top-left corner. If the sides or direction are wrong, fix the LED layout in Hyperion.</div>
                     <div id="HyperionResult" class="fieldDescription" role="status" aria-live="polite" hidden></div>
+                </div>
+
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">Playback</h3>
+
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="PlaybackEnabled" />
+                            <span>Follow playback</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">Only playback on the devices selected below drives the lights.</div>
+                    </div>
+
+                    <h4>Devices</h4>
+                    <div id="PlaybackDeviceList" class="checkboxList"></div>
+                    <div class="fieldDescription">Devices with a recent Jellyfin session, most recent first. If your TV is missing, start playing something on it and press <b>Refresh</b>.</div>
+
+                    <h4>Users (optional)</h4>
+                    <div id="PlaybackUserList" class="checkboxList"></div>
+                    <div class="fieldDescription">Leave all unticked to react to every user, or tick users to react only to them.</div>
+
+                    <button is="emby-button" type="button" id="PlaybackRefresh" class="raised button-alt block">
+                        <span>Refresh</span>
+                    </button>
+                    <div id="PlaybackResult" class="fieldDescription" role="status" aria-live="polite" hidden></div>
                 </div>
 
                 <div class="verticalSection">

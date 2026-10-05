@@ -1,4 +1,8 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
+using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.HyperionGrabber.Configuration;
@@ -20,4 +24,22 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the priority to register (100-199; lower wins).</summary>
     public int HyperionPriority { get; set; } = HyperionDefaults.Priority;
+
+    /// <summary>Gets or sets a value indicating whether playback on the selected devices drives the lights.</summary>
+    public bool PlaybackEnabled { get; set; }
+
+    /// <summary>Gets or sets the devices whose playback drives the lights. None selected means no playback does.</summary>
+    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration with System.Text.Json, which needs a setter.")]
+    public Collection<PlaybackDeviceSelection> PlaybackDevices { get; set; } = [];
+
+    /// <summary>Gets or sets the users whose playback drives the lights. None selected means every user.</summary>
+    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration with System.Text.Json, which needs a setter.")]
+    public Collection<PlaybackUserSelection> PlaybackUsers { get; set; } = [];
+
+    /// <summary>Creates the playback filter described by these settings.</summary>
+    /// <returns>The filter.</returns>
+    public PlaybackFilter ToPlaybackFilter() => PlaybackFilter.Create(
+        PlaybackEnabled,
+        (PlaybackDevices ?? []).Where(d => d is not null).Select(d => d.Id),
+        (PlaybackUsers ?? []).Where(u => u is not null).Select(u => u.Id));
 }

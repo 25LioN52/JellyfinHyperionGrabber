@@ -31,7 +31,7 @@ sequenceDiagram
 
 | Step | Where | Notes |
 | --- | --- | --- |
-| Detect playback, pause, seek, stop | Jellyfin server | From the session reports every client sends *(planned, M1-M2)* |
+| Detect playback, pause, seek, stop | Jellyfin server | From the session reports every client sends, for the devices and users you select; pause/seek handling *(planned, M2)* |
 | Decode and downscale | Jellyfin server | Uses Jellyfin's FFmpeg and hardware acceleration *(planned, M1)* |
 | HDR / Dolby Vision tone mapping | Jellyfin server | So LEDs get SDR colors *(planned, M3)* |
 | Keep in sync with the client | Jellyfin server | Extrapolates between reports, applies your latency offset *(planned, M2)* |

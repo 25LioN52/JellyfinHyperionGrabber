@@ -24,6 +24,18 @@ If the LEDs do not change at all while the test pattern reports success:
 - The LED device in Hyperion is disabled or not connected; check that Hyperion's own effects work.
 - With several Hyperion instances, you are looking at an instance that does not receive the stream.
 
+## Playback is not recognized
+
+Look in **Dashboard → Logs** for lines from `PlaybackMonitor`:
+
+- `Playback filter: enabled False` or `0 device(s)`: turn on **Follow playback**, select the TV under **Devices** and
+  press **Save**.
+- No `Lights follow playback on …` line when you press play on the TV: that device, or the user, is not selected, or
+  the client did not report playback (check that it shows under **Dashboard → Activity** while playing). The device id
+  changes when the Jellyfin app or Kodi add-on is reinstalled; select the device again.
+- With debug logging enabled for the plugin, `Playback started on <device> (<device id>, …)` lines show every playback
+  Jellyfin reports, including the ids to compare.
+
 ## Docker on a NAS (for example UGREEN, Synology, Unraid)
 
 - Jellyfin in a container reaches Hyperion on the same NAS through the NAS's LAN IP (bridge network) or

@@ -25,8 +25,30 @@ Hyperion shows the source with the **lowest** priority number that is active. Ty
 With the default, starting a movie overrides grabbers and the background effect, while a color you pick in the
 Hyperion app still wins. Hyperion.ng only accepts 100-199 from FlatBuffers clients.
 
-## Playback settings *(planned)*
+## Playback
 
-The next releases add: which devices/users trigger the lights, what happens on pause (default: hold the last
-frame), capture size and frame rate, a latency offset, HDR tone mapping, and multiple Hyperion targets (one per TV).
-See the [roadmap](../roadmap.md).
+Choose which playback drives the lights. Nothing happens until you turn on **Follow playback** and select at least
+one device.
+
+!!! note "Early preview"
+    This version recognizes matching playback and writes it to Jellyfin's log (**Dashboard → Logs**, lines from
+    `PlaybackMonitor`). Sending the picture to Hyperion during playback arrives in a later release *(planned)*.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Follow playback** | off | Turns playback detection on. |
+| **Devices** | none | Devices whose playback drives the lights, usually the TV your LEDs are mounted on. With none selected, no playback does. |
+| **Users (optional)** | none | Only playback by these users drives the lights. Leave all unticked to react to every user. |
+
+The lists show the devices and users of Jellyfin's recent sessions, most recently active device first. If your TV is
+missing, start playing something on it and press **Refresh**. Saved devices stay in the list (marked
+*not seen recently*) while they are offline. Jellyfin identifies a device by its app installation, so after
+reinstalling the Jellyfin app or add-on on the TV, select the device again.
+
+If two selected devices play at the same time, the one that started most recently drives the lights; when it stops,
+the other one takes over.
+
+## More playback settings *(planned)*
+
+Later releases add: what happens on pause (default: hold the last frame), capture size and frame rate, a latency
+offset, HDR tone mapping, and multiple Hyperion targets (one per TV). See the [roadmap](../roadmap.md).

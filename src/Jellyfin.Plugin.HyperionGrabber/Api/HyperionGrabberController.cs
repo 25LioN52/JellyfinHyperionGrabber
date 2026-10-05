@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,15 +22,26 @@ namespace Jellyfin.Plugin.HyperionGrabber.Api;
 public class HyperionGrabberController : ControllerBase
 {
     private readonly HyperionConnectionTester _tester;
+    private readonly ISessionManager _sessionManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HyperionGrabberController"/> class.
     /// </summary>
     /// <param name="tester">Runs connection tests and test patterns.</param>
-    public HyperionGrabberController(HyperionConnectionTester tester)
+    /// <param name="sessionManager">Jellyfin's sessions, for the device and user lists.</param>
+    public HyperionGrabberController(HyperionConnectionTester tester, ISessionManager sessionManager)
     {
         _tester = tester;
+        _sessionManager = sessionManager;
     }
+
+    /// <summary>
+    /// Lists the devices and users of Jellyfin's recent sessions, to choose which playback drives the lights.
+    /// </summary>
+    /// <returns>Devices (most recently active first) and users.</returns>
+    [HttpGet("Clients")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<PlaybackClientsResponse> GetClients() => Ok(PlaybackClientsResponse.From(_sessionManager.Sessions));
 
     /// <summary>
     /// Connects to Hyperion, registers the priority and disconnects.
