@@ -82,5 +82,6 @@ the PR description says how it was verified (including manual tests against a re
 - Jellyfin serializes API JSON in **PascalCase**.
 - The plugin version's 4th component is the Jellyfin line (`x.y.z.0` = 10.11, `x.y.z.1` = 12); Jellyfin installs the
   highest version whose `targetAbi` it supports (`docs/development/adr/0003-jellyfin-version-support.md`).
-- Jellyfin for Kodi reports playback position only on pause/resume/seek and roughly every 30 s of playback; the sync
-  engine must extrapolate between reports (`docs/development/jellyfin-integration.md`).
+- Jellyfin for Kodi reports the playback position in **whole seconds** (truncated), on pause/resume/seek and otherwise
+  only about every 4 minutes; other clients report milliseconds every 3-10 s. `PositionTracker` keeps the range the
+  position can be in (`docs/development/adr/0009-position-tracking.md`, `docs/development/jellyfin-integration.md`).

@@ -59,6 +59,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 
 | Component | Responsibility |
 | --- | --- |
+| `PositionTracker` | Estimates the playback position from reports of different precision: a range that every agreeing report narrows ([ADR 0009](adr/0009-position-tracking.md)) |
 | `PlaybackEvent`, `PlaybackState` | Host-independent playback report (start/progress/stop, session, device, user, item, media source, position, paused) and the state a session sees, time-stamped with `ReportedAt` |
 | `PlaybackFilter` | Enabled switch, selected device ids (none = nothing matches), selected user ids (none = every user) |
 | `PlaybackMonitor` | Non-blocking `Post`/`UpdateFilter` into a bounded queue (256, drop oldest); one processing task owns all state and decides which playback drives the target |
@@ -105,9 +106,14 @@ How a session behaves:
 - **Start:** everything runs on the session's own task, so `Start` returns at once. Settings or media the plugin
   cannot use are logged (Warning / Information) and the session idles until playback stops. FFmpeg starts first;
   Hyperion is connected when the first frame is due, so a slow file open cannot hit Hyperion's idle timeout.
-- **Pacing:** a `PeriodicTimer` ticks at the frame rate. Each tick estimates the position (last report + elapsed,
-  frozen while paused) and sends the newest decoded frame at or before it; older due frames are dropped and go back to
-  the pool. Late frames are never queued: a slow Hyperion, network or decoder means fewer frames.
+- **Pacing:** a `PeriodicTimer` ticks at the frame rate. Each tick estimates the position and sends the newest
+  decoded frame at or before it; older due frames are dropped and go back to the pool. Late frames are never queued: a
+  slow Hyperion, network or decoder means fewer frames.
+- **Position:** a `PositionTracker` keeps the range the client's position can be in. The start report gives ±1 s,
+  a whole-second report (Jellyfin for Kodi truncates) covers the following second, a precise one ±100 ms (while
+  playing up to 250 ms more, because web clients report the position of their last update); reports that agree narrow
+  the range, one that contradicts it replaces it. While playing the range moves on with time and widens by 0.1 % for clock
+  differences; the estimate is its middle ([ADR 0009](adr/0009-position-tracking.md)).
 - **Timing offset:** the configured light timing offset is added to the estimated position, so frames are decoded
   and sent earlier (or later); seek detection compares the reports without it.
 - **Keep-alive:** without a new frame for 500 ms (pause, end of video, slow decoder) the last frame is resent, so
@@ -115,12 +121,13 @@ How a session behaves:
 - **Long pause:** after the configured pause release time (default 15 s) FFmpeg is stopped and the Hyperion connection
   closed, so Hyperion shows its default; on resume decoding restarts at the position and Hyperion is connected again
   with the first frame.
-- **Seek:** a report more than 1 s away from the estimate restarts FFmpeg at the new position. A decoder lagging more
+- **Seek:** a report that moves the estimate by more than 1 s restarts FFmpeg at the new position. A decoder lagging more
   than 2 s behind is restarted too, after a 5 s grace period for opening and seeking the file.
 - **Stop and failures:** stopping, a lost connection or a decoding error kills FFmpeg and disposes the Hyperion client
   (which clears the priority) in parallel. `DisposeAsync` waits at most 5 s, so the monitor never stalls.
 - **Logging:** Information for start (`Streaming 160x90 at 25 fps …`) and stop (frames sent, dropped, decoder
-  restarts), Debug for seeks and pause changes, nothing per frame.
+  restarts), Debug for seeks, pause changes and position reports (how far each moved the estimate, and the remaining
+  uncertainty), nothing per frame.
 
 Design rules for the pipeline:
 

@@ -18,18 +18,19 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// <para>All work runs on the session's own task; <see cref="Update"/> only publishes the newest playback state.</para>
 /// <para>Hyperion is connected when the first frame is due, not before: opening and seeking a large file can take
 /// longer than Hyperion's idle timeout, which would close a connection that has nothing to send yet.</para>
-/// <para>Each tick estimates the playback position (last report plus the time since, unless paused) and sends the
-/// newest decoded frame at or before it. Older due frames are dropped, so a slow Hyperion, network or decoder means
-/// fewer frames, never a queue. The frame source pools its buffers; while none is free, FFmpeg blocks.</para>
+/// <para>Each tick estimates the playback position (a <see cref="PositionTracker"/> over the client's reports, moving on
+/// with time unless paused) and sends the newest decoded frame at or before it. Older due frames are dropped, so a slow
+/// Hyperion, network or decoder means fewer frames, never a queue. The frame source pools its buffers; while none is
+/// free, FFmpeg blocks.</para>
 /// <para>The light timing offset (<see cref="StreamingSettings.LatencyOffset"/>) is added to that estimate, so frames are
 /// decoded and sent earlier (positive) or later (negative) to cancel the delay of the client, Hyperion and the LEDs.</para>
 /// <para>While no new frame is due (pause, end of the video, slow decoder) the last frame is resent every
 /// <see cref="KeepAliveInterval"/>, because Hyperion.ng and HyperHDR close FlatBuffers connections that stay silent.
 /// After a pause longer than <see cref="StreamingSettings.PauseRelease"/>, FFmpeg is stopped and the Hyperion connection
 /// closed, so Hyperion shows its default again; on resume decoding restarts at the playback position.</para>
-/// <para>FFmpeg is restarted at the playback position when a report jumps more than <see cref="SeekThreshold"/> away
-/// from the estimate (a seek), and when the decoder lags more than <see cref="LagTolerance"/> behind playback after
-/// <see cref="RestartGrace"/>.</para>
+/// <para>FFmpeg is restarted at the playback position when a report moves the estimate by more than
+/// <see cref="SeekThreshold"/> (a seek), and when the decoder lags more than <see cref="LagTolerance"/> behind playback
+/// after <see cref="RestartGrace"/>.</para>
 /// <para>A failure (Hyperion unreachable, decoding error, lost connection) stops the stream and releases Hyperion's
 /// priority; the session then idles until it is disposed.</para>
 /// </remarks>
@@ -38,7 +39,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     /// <summary>How often the last frame is resent while no new frame is due; Hyperion's idle timeout is 5 s by default.</summary>
     internal static readonly TimeSpan KeepAliveInterval = TimeSpan.FromMilliseconds(500);
 
-    /// <summary>A report this far from the estimated position is a seek; decoding restarts at the new position.</summary>
+    /// <summary>A report that moves the estimated position this far is a seek; decoding restarts at the new position.</summary>
     internal static readonly TimeSpan SeekThreshold = TimeSpan.FromSeconds(1);
 
     /// <summary>How far the decoder may lag behind playback before it is restarted at the playback position.</summary>
@@ -55,6 +56,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _stopping = new();
     private readonly TaskCompletionSource<bool> _streamingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly PositionTracker _tracker; // Owned by the run task.
     private PlaybackState _state;
     private Task _run = Task.CompletedTask;
     private long _framesSent;
@@ -86,6 +88,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _logger = factory.SessionLogger;
         _state = state;
         _appliedState = state;
+        _tracker = new PositionTracker(state);
     }
 
     /// <summary>Gets a task that completes with <see langword="true"/> once frames are being paced, or with
@@ -245,7 +248,8 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         using var timer = new PeriodicTimer(interval, _timeProvider);
         var now = _timeProvider.GetUtcNow();
-        var position = TargetPosition(Volatile.Read(ref _state), now);
+        ApplyReport(Volatile.Read(ref _state));
+        var position = TargetPosition(now);
         StartSource(options, position, now);
         Log.Streaming(_logger, options.OutputWidth, options.OutputHeight, options.FramesPerSecond, position);
         _streamingStarted.TrySetResult(true);
@@ -257,13 +261,13 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             {
                 now = _timeProvider.GetUtcNow();
                 var state = Volatile.Read(ref _state);
-                var seek = IsSeek(state, now);
+                var seek = ApplyReport(state);
                 if (await HandlePauseAsync(state, plan, now).ConfigureAwait(false))
                 {
                     continue;
                 }
 
-                position = TargetPosition(state, now);
+                position = TargetPosition(now);
                 if (seek)
                 {
                     Log.Seek(_logger, position);
@@ -319,9 +323,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     }
 
     /// <summary>The position to show now: the estimated playback position plus the light timing offset, never negative.</summary>
-    private TimeSpan TargetPosition(PlaybackState state, DateTimeOffset now)
+    private TimeSpan TargetPosition(DateTimeOffset now)
     {
-        var position = state.EstimatePosition(now) + _latencyOffset;
+        var position = _tracker.Estimate(now) + _latencyOffset;
         return position > TimeSpan.Zero ? position : TimeSpan.Zero;
     }
 
@@ -338,7 +342,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             if (_releasedForPause)
             {
                 _releasedForPause = false;
-                var position = TargetPosition(state, now);
+                var position = TargetPosition(now);
                 Log.ResumedAfterRelease(_logger, position);
                 StartSource(plan.Frames, position, now);
             }
@@ -365,17 +369,19 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         return true;
     }
 
-    /// <summary>Checks whether a new report moved the playback position by more than <see cref="SeekThreshold"/>.</summary>
-    private bool IsSeek(PlaybackState state, DateTimeOffset now)
+    /// <summary>Feeds a new report to the position tracker.</summary>
+    /// <returns>Whether it moved the estimated position by more than <see cref="SeekThreshold"/>: a seek.</returns>
+    private bool ApplyReport(PlaybackState state)
     {
         if (ReferenceEquals(state, _appliedState))
         {
             return false;
         }
 
-        var previous = _appliedState.EstimatePosition(now);
         _appliedState = state;
-        return (state.EstimatePosition(now) - previous).Duration() > SeekThreshold;
+        var moved = _tracker.Apply(state);
+        Log.Report(_logger, state.Position, state.IsPositionReported, state.IsPaused, moved, _tracker.Uncertainty);
+        return moved.Duration() > SeekThreshold;
     }
 
     /// <summary>Takes the newest decoded frame at or before <paramref name="position"/>, dropping older ones.</summary>
@@ -439,7 +445,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         // Stopping FFmpeg takes a moment; start the new one at the position as of now.
         var now = _timeProvider.GetUtcNow();
-        StartSource(options, TargetPosition(Volatile.Read(ref _state), now), now);
+        StartSource(options, TargetPosition(now), now);
     }
 
     private void StartSource(FfmpegFrameSourceOptions options, TimeSpan position, DateTimeOffset now)
@@ -507,5 +513,8 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 13, Level = LogLevel.Information, Message = "Playback resumed: streaming to Hyperion again from {Position}")]
         public static partial void ResumedAfterRelease(ILogger logger, TimeSpan position);
+
+        [LoggerMessage(EventId = 14, Level = LogLevel.Debug, Message = "Position report {Position} (reported: {Reported}, paused: {Paused}) moved the estimate by {Moved}; uncertainty ±{Uncertainty}")]
+        public static partial void Report(ILogger logger, TimeSpan position, bool reported, bool paused, TimeSpan moved, TimeSpan uncertainty);
     }
 }

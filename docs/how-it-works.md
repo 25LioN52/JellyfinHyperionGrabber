@@ -34,7 +34,7 @@ sequenceDiagram
 | Detect playback, pause, seek, stop | Jellyfin server | From the session reports every client sends, for the devices and users you select |
 | Decode and downscale | Jellyfin server | Uses Jellyfin's FFmpeg and hardware acceleration, at the frame rate you set |
 | HDR / Dolby Vision tone mapping | Jellyfin server | So LEDs get SDR colors *(planned, M3)* |
-| Keep in sync with the client | Jellyfin server | Extrapolates between reports and applies your light timing offset |
+| Keep in sync with the client | Jellyfin server | Tracks the position from the client's reports and applies your light timing offset |
 | Map picture to LEDs | Hyperion | Your LED layout, any shape |
 | Calibration, smoothing, black borders | Hyperion | Unchanged |
 | Drive devices | Hyperion | WLED, Philips Hue, Adalight, ... |
@@ -42,9 +42,11 @@ sequenceDiagram
 ## Synchronization
 
 Because the server decodes independently, the LEDs are only as accurate as the plugin's idea of where the client is.
-Clients report start, pause, resume, seek and their position from time to time; some (for example the Jellyfin
-add-on for Kodi) only every 30 seconds or on events. Between reports the plugin assumes normal playback speed, and a
-report that differs by more than a second (a seek) makes it decode from the new position. If Hyperion or the network
+Clients report start, pause, resume, seek and their position from time to time: most apps every few seconds to the
+millisecond, the Jellyfin add-on for Kodi in whole seconds and otherwise only every few minutes. Between reports the
+plugin assumes normal playback speed. It also knows how precise each report is, so a rounded report narrows its
+estimate instead of resetting it: every pause, resume or report makes the timing more accurate. A report that differs
+by more than a second (a seek) makes it decode from the new position. If Hyperion or the network
 is slow, the plugin skips pictures rather than falling behind. The **light timing offset** corrects the constant
 delay of the client, Hyperion's smoothing, the network and the LEDs.
 

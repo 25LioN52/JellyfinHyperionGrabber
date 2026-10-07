@@ -169,7 +169,7 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
             if (playbackEvent.Position is null)
             {
                 // Without a position the report would read as a seek to the start; keep the estimate instead.
-                state = state with { Position = tracked.State.EstimatePosition(report.ReceivedAt) };
+                state = state with { Position = tracked.State.EstimatePosition(report.ReceivedAt), IsPositionReported = false };
             }
 
             _playing[sessionId] = tracked with { State = state };

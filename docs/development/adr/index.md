@@ -14,3 +14,4 @@ accidentally undo. Superseded records stay, marked *Superseded by ...*.
 | [0006](0006-release-automation.md) | release-please releases; plugin manifest generated from release assets | Accepted |
 | [0007](0007-ffmpeg-frame-source.md) | Decode with Jellyfin's FFmpeg as a child process, raw frames over a pipe into a fixed buffer pool | Accepted |
 | [0008](0008-streaming-session-pacing.md) | Pace frames with a frame-rate timer, send the newest due frame, drop late ones | Accepted |
+| [0009](0009-position-tracking.md) | Track the playback position as a range that every report narrows | Accepted |

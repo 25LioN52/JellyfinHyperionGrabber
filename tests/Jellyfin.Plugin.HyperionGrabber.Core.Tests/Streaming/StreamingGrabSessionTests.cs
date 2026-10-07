@@ -55,7 +55,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     [Fact]
     public async Task Start_DecodesFromTheEstimatedPosition()
     {
-        var state = State(TimeSpan.FromMinutes(1)) with { ReportedAt = _time.GetUtcNow() - TimeSpan.FromSeconds(2) };
+        var state = State(TimeSpan.FromMinutes(1)) with { IsStart = true, ReportedAt = _time.GetUtcNow() - TimeSpan.FromSeconds(2) };
 
         var session = Start(state);
 
@@ -66,6 +66,16 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.Equal("file:/media/movie.mkv", source.Options.InputPath);
         Assert.Equal((160, 90), (source.Options.OutputWidth, source.Options.OutputHeight));
         AssertLogged(LogLevel.Information, "Streaming 160x90 at 10 fps");
+    }
+
+    [Fact]
+    public async Task Start_FromAWholeSecondProgressReport_DecodesFromTheMiddleOfThatSecond()
+    {
+        // Jellyfin restarted while Kodi kept playing: the session begins from Kodi's next (truncated) report.
+        var session = Start(State(TimeSpan.FromMinutes(10)));
+
+        Assert.True(await session.StreamingStarted.WaitAsync(Ct));
+        Assert.Equal(TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(500), Source.Options.StartPosition);
     }
 
     [Fact]
@@ -167,15 +177,49 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Source.Push(3);
         await TickAsync(session);
         var first = Source;
+        var target = TimeSpan.FromMinutes(minutes) + TimeSpan.FromMilliseconds(250);
 
-        session.Update(State(TimeSpan.FromMinutes(minutes)));
+        session.Update(State(target));
         await TickAsync(session);
 
         Assert.True(first.IsDisposed);
         Assert.Equal(0, first.Outstanding); // The frame that was waiting to be shown went back to the pool.
         Assert.Equal(2, _sources.Count);
-        Assert.Equal(TimeSpan.FromMinutes(minutes) + Interval, Source.Options.StartPosition);
+        Assert.Equal(target + TimeSpan.FromMilliseconds(125) + Interval, Source.Options.StartPosition); // Up to 250 ms old: the middle.
         Assert.Equal(1, session.Restarts);
+    }
+
+    [Fact]
+    public async Task Seek_ToAWholeSecond_DecodesFromTheMiddleOfThatSecond()
+    {
+        var session = await StartStreamingAsync(TimeSpan.FromMinutes(10));
+        await TickAsync(session);
+
+        session.Update(State(TimeSpan.FromMinutes(2))); // Jellyfin for Kodi truncates: somewhere in 2:00-2:01.
+        await TickAsync(session);
+
+        Assert.Equal(TimeSpan.FromMinutes(2) + TimeSpan.FromMilliseconds(500) + Interval, Source.Options.StartPosition);
+    }
+
+    [Fact]
+    public async Task TruncatedPauseAndResumeReports_DoNotSetTheLightsBack()
+    {
+        var session = await StartStreamingAsync(TimeSpan.FromMinutes(10));
+        Source.Push(20); // Frames at 10:00.0, 10:00.1, ...
+        await TickAsync(session, 4);
+        session.Update(State(TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(400), paused: true)); // Precise.
+        await TickAsync(session, 2);
+        session.Update(State(TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(400)));
+        await TickAsync(session, 3);
+
+        // Paused and resumed at 10:00.7, which Jellyfin for Kodi reports as 10:00.
+        session.Update(State(TimeSpan.FromMinutes(10), paused: true));
+        await TickAsync(session, 2);
+        session.Update(State(TimeSpan.FromMinutes(10)));
+        await TickAsync(session);
+
+        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8], _connection.Images);
+        Assert.Equal(0, session.Restarts);
     }
 
     [Fact]
@@ -527,7 +571,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
 
     private async Task<StreamingGrabSession> StartStreamingAsync(TimeSpan? position = null)
     {
-        var session = Start(State(position ?? TimeSpan.Zero));
+        var session = Start(State(position ?? TimeSpan.Zero) with { IsStart = true });
         Assert.True(await session.StreamingStarted.WaitAsync(Ct));
         return session;
     }
