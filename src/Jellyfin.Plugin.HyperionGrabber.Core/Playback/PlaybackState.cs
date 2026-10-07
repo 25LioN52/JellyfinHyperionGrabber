@@ -6,9 +6,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 /// The latest known state of a playback that drives a <see cref="IGrabSession"/>.
 /// </summary>
 /// <remarks>
-/// Clients report the position only now and then (Jellyfin for Kodi: on pause, resume, seek and about every 30 s), so
-/// consumers estimate the current position as <see cref="Position"/> plus the time elapsed since
-/// <see cref="ReportedAt"/> while not paused.
+/// Clients report the position only now and then (Jellyfin for Kodi: in whole seconds, on pause, resume and seek and
+/// otherwise about every 4 minutes), so consumers estimate the current position from it: roughly with
+/// <see cref="EstimatePosition"/>, precisely with a <see cref="PositionTracker"/> over all reports.
 /// </remarks>
 public sealed record PlaybackState
 {
@@ -35,6 +35,10 @@ public sealed record PlaybackState
 
     /// <summary>Gets the last reported position.</summary>
     public TimeSpan Position { get; init; }
+
+    /// <summary>Gets a value indicating whether the client reported <see cref="Position"/>; when <see langword="false"/>
+    /// the report had no position and <see cref="Position"/> is an estimate.</summary>
+    public bool IsPositionReported { get; init; } = true;
 
     /// <summary>Gets a value indicating whether playback is paused.</summary>
     public bool IsPaused { get; init; }

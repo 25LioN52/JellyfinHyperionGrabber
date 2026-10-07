@@ -98,3 +98,4 @@ nav:
           - 0006 Release automation: development/adr/0006-release-automation.md
           - 0007 FFmpeg frame source: development/adr/0007-ffmpeg-frame-source.md
           - 0008 Streaming session pacing: development/adr/0008-streaming-session-pacing.md
+          - 0009 Position tracking: development/adr/0009-position-tracking.md

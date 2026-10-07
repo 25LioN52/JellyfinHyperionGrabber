@@ -21,15 +21,19 @@ Both builds come from the same source code and the same release, served from one
 The plugin only uses the parts of the FlatBuffers protocol that both servers implement identically (Register,
 RawImage RGB, Clear).
 
-## Jellyfin clients *(applies once playback streaming ships)*
+## Jellyfin clients
 
-Any client that reports playback to the server works. Sync precision depends on how often it reports:
+Any client that reports playback to the server works. Sync precision depends on how often and how precisely it
+reports:
 
 | Client | Position reports | Expected sync |
 | --- | --- | --- |
-| Jellyfin for Kodi / JellyCon (incl. LibreELEC) | On pause/resume/seek, otherwise about every 30 s | Good after offset calibration; precise Kodi sync is planned |
-| Jellyfin Web, Android, Android TV | Frequent | Good |
-| Others | Varies | Please report your results |
+| Jellyfin for Kodi (incl. LibreELEC) | Whole seconds; on pause/resume/seek, otherwise about every 4 minutes | Within about half a second after start, more precise with every pause, resume and report; set the light timing offset. Precise Kodi sync is planned |
+| Jellyfin Web, Jellyfin Media Player, LG webOS, Samsung Tizen | Milliseconds, every 10 s and on pause/seek | Good |
+| Android TV | Milliseconds, every 3 s and on pause/seek | Good |
+| Android (phone, tablet) | Milliseconds, every 10 s | Good |
+| Swiftfin (iOS, tvOS) | Every 5 s and on pause/seek | Good (expected) |
+| JellyCon, Infuse, Findroid, Roku, others | Not checked | Please report your results |
 
 ## LED devices
 

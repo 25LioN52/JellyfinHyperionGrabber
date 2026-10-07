@@ -117,6 +117,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
 
         var update = Assert.Single(Assert.Single(_factory.Sessions).Updates);
         Assert.Equal(TimeSpan.FromMinutes(5) + TimeSpan.FromSeconds(10), update.Position);
+        Assert.False(update.IsPositionReported);
         Assert.True(update.IsPaused);
         Assert.Equal(_time.GetUtcNow(), update.ReportedAt);
     }

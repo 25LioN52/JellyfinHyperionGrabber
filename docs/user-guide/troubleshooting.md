@@ -33,7 +33,7 @@ Look in **Dashboard → Logs** for lines from `PlaybackMonitor`:
 - No `Lights follow playback on …` line when you press play on the TV: that device, or the user, is not selected, or
   the client did not report playback (check that it shows under **Dashboard → Activity** while playing). The device id
   changes when the Jellyfin app or Kodi add-on is reinstalled; select the device again.
-- With debug logging enabled for the plugin, `Playback started on <device> (<device id>, …)` lines show every playback
+- With [debug logging](#debug-logging) enabled for the plugin, `Playback started on <device> (<device id>, …)` lines show every playback
   Jellyfin reports, including the ids to compare.
 
 ## The lights do not follow a video
@@ -71,6 +71,35 @@ pictures early to cancel it:
 Also check Hyperion's own delay: **Configuration → Image Processing → Smoothing** (Hyperion.ng) adds its smoothing
 time and any *update delay* to every change. A shorter smoothing time or an update delay of 0 makes the lights react
 faster.
+
+How precise the timing can be depends on the client ([Compatibility](../compatibility.md#jellyfin-clients)). Most apps
+report their position to the millisecond every few seconds. The Jellyfin add-on for Kodi reports whole seconds and,
+during playback, only every few minutes: right after starting a video the lights can be up to about half a second off,
+and every pause, resume or seek report makes them more precise. Tune the offset after a pause and resume.
+
+To see what the plugin knows, turn on debug logging for it (below) and look for
+`Position report … moved the estimate by …; uncertainty ±…` lines: a large move means the client's report disagreed
+with the plugin's estimate, the uncertainty shows how precise the estimate is.
+
+## Debug logging
+
+Jellyfin reads extra log settings from `logging.json` in its configuration folder (Docker: usually
+`/config/config/logging.json`, next to `logging.default.json`). Create it with:
+
+```json
+{
+  "Serilog": {
+    "MinimumLevel": {
+      "Override": {
+        "Jellyfin.Plugin.HyperionGrabber": "Debug"
+      }
+    }
+  }
+}
+```
+
+Restart Jellyfin; the plugin's Debug lines then appear in **Dashboard → Logs**. Delete the file (and restart) to turn
+it off again.
 
 ## Docker on a NAS (for example UGREEN, Synology, Unraid)
 

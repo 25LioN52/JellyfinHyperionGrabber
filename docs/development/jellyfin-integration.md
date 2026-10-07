@@ -48,10 +48,19 @@ Jellyfin serializes API JSON in PascalCase; the config page sends and reads Pasc
 carries the session (device, client, user), the item, `PlaybackPositionTicks`, `IsPaused` and `MediaSourceId`.
 
 - There is no separate seek or pause event: both arrive as `PlaybackProgress` with a new position or `IsPaused`.
-- How often clients report differs. **Jellyfin for Kodi** (`jellyfin-kodi/jellyfin_kodi/player.py`) reports
-  immediately on pause, resume and seek, and otherwise only after the position advanced by 30 seconds or more.
-  The sync engine therefore extrapolates (`position = last reported + elapsed × speed`) and treats a jump larger than
-  a threshold as a seek.
+- How often and how precisely clients report differs (checked in their sources, October 2026):
+
+    | Client | Position | Regular reports | Pause / seek |
+    | --- | --- | --- | --- |
+    | Jellyfin for Kodi (`player.py`, `entrypoint/service.py`) | whole seconds, truncated (`int(getTime())`) | about every 4 minutes | immediately |
+    | Web client and its wrappers (`apiClient.reportPlaybackProgress`) | milliseconds, up to one `timeupdate` (about 250 ms) old | every 10 s | immediately |
+    | Android TV (`PlaybackController`) | milliseconds | every 3 s | immediately |
+    | Android (`PlayerViewModel`) | milliseconds | every 10 s | - |
+    | Swiftfin (`MediaProgressObserver`) | - | every 5 s | immediately |
+
+    Jellyfin for Kodi's start report carries the requested start position, not the player's clock. The session
+    therefore keeps the range the position can be in and narrows it with every report (`PositionTracker`,
+    [ADR 0009](adr/0009-position-tracking.md)); a report that moves the estimate by more than 1 s is a seek.
 - Kodi exposes its exact playback time and events over JSON-RPC (TCP 9090 or HTTP). An optional Kodi clock source is
   planned for precise sync on Kodi clients (M2).
 - Event handlers run on Jellyfin's threads: post the change to the session and return immediately.

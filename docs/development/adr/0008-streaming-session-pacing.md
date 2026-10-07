@@ -5,8 +5,8 @@
 ## Context
 
 The frame source ([ADR 0007](0007-ffmpeg-frame-source.md)) yields frames with media positions; something must decide
-when each frame goes to Hyperion. The client only reports its position now and then (Jellyfin for Kodi: on
-pause/resume/seek and about every 30 s), Hyperion or the network can be slow, the decoder can be slow (CPU decoding
+when each frame goes to Hyperion. The client only reports its position now and then (Jellyfin for Kodi: in whole
+seconds, on pause/resume/seek and about every 4 minutes), Hyperion or the network can be slow, the decoder can be slow (CPU decoding
 of 4K HEVC), and Hyperion.ng and HyperHDR close a FlatBuffers connection that stays silent (5 s by default).
 Requirements: frames at the configured rate, never a queue of stale frames, no per-frame allocations, a bounded stop.
 
@@ -25,9 +25,10 @@ Options considered:
 Each playback gets a `StreamingGrabSession` that runs one loop on its own task, ticking at the configured frame rate
 (`PeriodicTimer` on the injected `TimeProvider`, default 25 fps). On every tick it:
 
-1. Estimates the playback position: last reported position plus the time since the report, frozen while paused,
-   plus the configured light timing offset (seek detection compares reports without the offset).
-2. Treats a report that moved the position by more than **1 s** from the estimate as a seek and restarts FFmpeg there.
+1. Estimates the playback position (last report plus the time since, frozen while paused; since 0.4 a range that
+   reports narrow, [ADR 0009](0009-position-tracking.md)), plus the configured light timing offset (seek detection
+   ignores the offset).
+2. Treats a report that moved the estimate by more than **1 s** as a seek and restarts FFmpeg there.
 3. Takes the **newest decoded frame at or before the position** without waiting (`TryReadFrame`); older due frames
    are disposed (returned to the pool) and counted as dropped. A frame that is not due yet is held for a later tick.
 4. Restarts FFmpeg at the position when the decoder lags more than **2 s** behind, but only after it delivered frames

@@ -26,7 +26,8 @@ Milestones are deliberately small so each one ships something usable. Items beco
 - [x] Pause holds the last frame (keep-alive so Hyperion does not drop the connection); resume continues *(shipped
       with M1 streaming)*
 - [x] Seek detection and restart at the new position *(shipped with M1 streaming)*
-- [ ] Drift correction between position reports
+- [x] Position tracking that knows each client's report precision (Kodi's whole seconds), tolerates clock drift and
+      gets more precise with every report *(shipped in 0.4)*
 - [x] Release the lights after a long pause (default 15 s), resume at the playback position *(shipped in 0.3)*
 - [x] Light timing offset (ms), one value for all devices *(shipped in 0.3)*
 - [ ] Per-device timing offset, with a calibration video and guide

@@ -39,8 +39,9 @@ Build the solution (it builds both TFMs). To inspect an API, look at the XML doc
 ## Playback reporting cadence (drives sync design)
 
 - Pause, resume and seek arrive as `PlaybackProgress` with a new position / `IsPaused`; there is no separate seek event.
-- Jellyfin for Kodi (`jellyfin-kodi/jellyfin_kodi/player.py`) reports immediately on pause/resume/seek and otherwise
-  only when the position advanced >= 30 s. Other clients differ; never assume frequent reports.
+- Jellyfin for Kodi (`jellyfin_kodi/player.py`, `entrypoint/service.py`) reports `int(getTime())` (whole seconds,
+  truncated) immediately on pause/resume/seek and otherwise about every 4 minutes. Web-based clients report milliseconds
+  every 10 s, Android TV every 3 s. Never assume frequent or precise reports; `PositionTracker` (ADR 0009) handles both.
 
 ## Running locally
 
