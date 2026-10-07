@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.3.0...v0.4.0) (2026-10-07)
+
+
+### Features
+
+* track the playback position as a range so rounded and rare reports stop shifting the lights ([#26](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/26)) ([c61e2c2](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/c61e2c2c501c0d7685fb40b96bf0e38324eba3a4))
+
 ## [0.3.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.2.0...v0.3.0) (2026-10-05)
 
 
