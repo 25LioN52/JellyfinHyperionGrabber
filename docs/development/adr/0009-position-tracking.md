@@ -54,5 +54,8 @@ Each report is logged at Debug with how far it moved the estimate and the remain
   report narrows the range; an optional Kodi clock (JSON-RPC) remains possible for exact sync from the first second.
 - A precise client that happens to report an exact whole second gets a wider range than needed; the overlap with what
   is already known keeps the estimate, so this only costs precision right after a seek.
+- A client that *rounds* to whole seconds instead of truncating would get estimates up to about half a second early
+  (about as far off as re-anchoring would be); none of the checked clients rounds. If one turns up, its reports need
+  their own precision rule.
 - The rules use only the reports' values and arrival times, so they work for any client, including ones not checked
   yet; clients that report more often converge faster.
