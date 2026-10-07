@@ -109,9 +109,10 @@ How a session behaves:
 - **Pacing:** a `PeriodicTimer` ticks at the frame rate. Each tick estimates the position and sends the newest
   decoded frame at or before it; older due frames are dropped and go back to the pool. Late frames are never queued: a
   slow Hyperion, network or decoder means fewer frames.
-- **Position:** a `PositionTracker` keeps the range the client's position can be in. A whole-second report (Jellyfin
-  for Kodi truncates) covers the following second, a precise one ±100 ms; reports that agree narrow the range, one
-  that contradicts it replaces it. While playing the range moves on with time and widens by 0.1 % for clock
+- **Position:** a `PositionTracker` keeps the range the client's position can be in. The start report gives ±1 s,
+  a whole-second report (Jellyfin for Kodi truncates) covers the following second, a precise one ±100 ms (while
+  playing up to 250 ms more, because web clients report the position of their last update); reports that agree narrow
+  the range, one that contradicts it replaces it. While playing the range moves on with time and widens by 0.1 % for clock
   differences; the estimate is its middle ([ADR 0009](adr/0009-position-tracking.md)).
 - **Timing offset:** the configured light timing offset is added to the estimated position, so frames are decoded
   and sent earlier (or later); seek detection compares the reports without it.

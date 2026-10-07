@@ -58,9 +58,10 @@ carries the session (device, client, user), the item, `PlaybackPositionTicks`, `
     | Android (`PlayerViewModel`) | milliseconds | every 10 s | - |
     | Swiftfin (`MediaProgressObserver`) | - | every 5 s | immediately |
 
-    Jellyfin for Kodi's start report carries the requested start position, not the player's clock. The session
-    therefore keeps the range the position can be in and narrows it with every report (`PositionTracker`,
-    [ADR 0009](adr/0009-position-tracking.md)); a report that moves the estimate by more than 1 s is a seek.
+    Jellyfin for Kodi's start report carries the requested start position, not the player's clock
+    (`PlaybackState.IsStart` marks start reports). The session therefore keeps the range the position can be in and
+    narrows it with every report (`PositionTracker`, [ADR 0009](adr/0009-position-tracking.md)); a report that moves
+    the estimate by more than 1 s is a seek.
 - Kodi exposes its exact playback time and events over JSON-RPC (TCP 9090 or HTTP). An optional Kodi clock source is
   planned for precise sync on Kodi clients (M2).
 - Event handlers run on Jellyfin's threads: post the change to the session and return immediately.

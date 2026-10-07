@@ -74,8 +74,8 @@ faster.
 
 How precise the timing can be depends on the client ([Compatibility](../compatibility.md#jellyfin-clients)). Most apps
 report their position to the millisecond every few seconds. The Jellyfin add-on for Kodi reports whole seconds and,
-during playback, only every few minutes: right after starting a video the lights can be up to about half a second off,
-and every pause, resume or seek report makes them more precise. Tune the offset after a pause and resume.
+during playback, only every few minutes: right after starting a video the lights can be up to about a second off,
+and every pause, resume or seek makes them more precise. Tune the offset after pausing and resuming a few times.
 
 To see what the plugin knows, turn on debug logging for it (below) and look for
 `Position report … moved the estimate by …; uncertainty ±…` lines: a large move means the client's report disagreed

@@ -28,7 +28,7 @@ reports:
 
 | Client | Position reports | Expected sync |
 | --- | --- | --- |
-| Jellyfin for Kodi (incl. LibreELEC) | Whole seconds; on pause/resume/seek, otherwise about every 4 minutes | Within about half a second after start, more precise with every pause, resume and report; set the light timing offset. Precise Kodi sync is planned |
+| Jellyfin for Kodi (incl. LibreELEC) | Whole seconds; on pause/resume/seek, otherwise about every 4 minutes | Up to about a second off right after starting, more precise with every pause, resume, seek and periodic report; set the light timing offset. Precise Kodi sync is planned |
 | Jellyfin Web, Jellyfin Media Player, LG webOS, Samsung Tizen | Milliseconds, every 10 s and on pause/seek | Good |
 | Android TV | Milliseconds, every 3 s and on pause/seek | Good |
 | Android (phone, tablet) | Milliseconds, every 10 s | Good |

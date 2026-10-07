@@ -47,6 +47,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
         Assert.Equal(Movie, session.Initial.ItemId);
         Assert.Equal("source", session.Initial.MediaSourceId);
         Assert.Equal(TimeSpan.FromMinutes(5), session.Initial.Position);
+        Assert.True(session.Initial.IsStart);
         Assert.Equal(_time.GetUtcNow(), session.Initial.ReportedAt);
     }
 
@@ -141,7 +142,9 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
 
         await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi", position: TimeSpan.FromMinutes(42)));
 
-        Assert.Equal(TimeSpan.FromMinutes(42), Assert.Single(_factory.Sessions).Initial.Position);
+        var initial = Assert.Single(_factory.Sessions).Initial;
+        Assert.Equal(TimeSpan.FromMinutes(42), initial.Position);
+        Assert.False(initial.IsStart); // A clock reading with the client's usual precision, not a requested start.
     }
 
     [Fact]

@@ -40,6 +40,10 @@ public sealed record PlaybackState
     /// the report had no position and <see cref="Position"/> is an estimate.</summary>
     public bool IsPositionReported { get; init; } = true;
 
+    /// <summary>Gets a value indicating whether this is the client's playback start report: its position is the
+    /// requested start position, not a reading of the player's clock.</summary>
+    public bool IsStart { get; init; }
+
     /// <summary>Gets a value indicating whether playback is paused.</summary>
     public bool IsPaused { get; init; }
 
@@ -78,6 +82,7 @@ public sealed record PlaybackState
             ItemId = playbackEvent.ItemId,
             MediaSourceId = playbackEvent.MediaSourceId,
             Position = playbackEvent.Position ?? TimeSpan.Zero,
+            IsStart = playbackEvent.Kind == PlaybackEventKind.Started,
             IsPaused = playbackEvent.IsPaused,
             ReportedAt = reportedAt,
         };

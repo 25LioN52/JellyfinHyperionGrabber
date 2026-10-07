@@ -28,10 +28,15 @@ Options considered:
 
 A `PositionTracker` (Core) per session keeps the range `[earliest, latest]` of the real position at a point in time:
 
-- The first report gives ± 1 s: clients send it at different moments around the first picture.
-- A report in whole seconds (above 0) is taken as truncated, covering the following second; any other position is
-  taken as it is. Both get ± 100 ms for the time the report took. Position 0 is taken as exact (every client reports
-  the very start as 0).
+- A start report gives ± 1 s: it carries the requested start position, and clients send it at different moments
+  around the first picture. A session can also begin from a later report (Jellyfin restarted during playback, the
+  device filter changed); that one gets its usual precision, so `PlaybackState.IsStart` marks start reports.
+- Any other report gives its own precision, plus ± 100 ms for the time it took to arrive:
+    - a whole-second position above 0 is taken as truncated and covers the following second; Kodi reads its clock
+      when it reports (0 is not taken as truncated: every client reports the very start as 0);
+    - a millisecond position reported while playing may be up to 250 ms old (the web client sends the position of its
+      last `timeupdate`), so its range reaches 250 ms further;
+    - a millisecond position reported while paused is taken as it is: a paused position cannot be old.
 - A report that overlaps the range narrows it to the overlap; one that does not (a seek, or clocks that drifted apart)
   replaces it.
 - While playing the range moves on with time and widens by 0.1 % of the elapsed time on each side (the client may play
@@ -44,14 +49,18 @@ Each report is logged at Debug with how far it moved the estimate and the remain
 
 ## Consequences
 
-- Precise clients behave as before: a report narrows the range to about ± 100 ms around itself, and consistent
-  reports average out small jitter.
+- Precise clients: a report while playing narrows the range to 0.1 s before to 0.35 s after it, and reports of
+  different ages narrow it further, so the web client's 0-250 ms report age averages out instead of
+  making the lights jitter. A client whose playing reports are fresh (Android TV) is estimated about 0.1 s early, a
+  constant that the light timing offset absorbs.
 - Jellyfin for Kodi no longer jumps up to a second late at each report. After a truncated report the estimate is the
   middle of that second (at most about half a second off), and every further report at another point of a second
   narrows it: in a test with four Kodi-like reports the error went from up to 0.95 s (re-anchoring) to 0.01 s. A
   truncated pause or resume report that agrees with a precise estimate leaves it untouched.
-- Right after the start, a Kodi client can still be up to about half a second off until a pause, seek or periodic
-  report narrows the range; an optional Kodi clock (JSON-RPC) remains possible for exact sync from the first second.
+- Right after the start the range is ± 1 s, and with Kodi it stays that wide until a pause, seek or periodic report
+  narrows it (at most about half a second off after the first). An optional Kodi clock (JSON-RPC) remains possible
+  for exact sync from the first second. A session that begins from a mid-playback Kodi report starts from the middle
+  of that report's second.
 - A precise client that happens to report an exact whole second gets a wider range than needed; the overlap with what
   is already known keeps the estimate, so this only costs precision right after a seek.
 - A client that *rounds* to whole seconds instead of truncating would get estimates up to about half a second early

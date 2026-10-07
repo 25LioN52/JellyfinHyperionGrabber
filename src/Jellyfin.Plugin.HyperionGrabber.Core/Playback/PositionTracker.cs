@@ -10,11 +10,12 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 /// reports it on pause, resume and seek and otherwise about every 4 minutes. Moving the estimate to every report would
 /// shift the lights by up to a second each time. Instead the tracker keeps the range the real position can be in:</para>
 /// <list type="bullet">
-/// <item><description>The first report gives a range of ± <see cref="StartUncertainty"/>: clients send it at
-/// different moments around the first picture.</description></item>
-/// <item><description>A report in whole seconds (above 0) is taken as truncated: the real position lies within the
-/// following second. Any other position is taken as it is. Both get ± <see cref="ReportTolerance"/> for the
-/// time the report took to arrive.</description></item>
+/// <item><description>A start report gives a range of ± <see cref="StartUncertainty"/>: it carries the requested start
+/// position, and clients send it at different moments around the first picture.</description></item>
+/// <item><description>Any other report gives its own precision: a whole-second position (above 0) is taken as
+/// truncated, so the real one lies within the following second; a millisecond position is taken as it is, but while
+/// playing it may be up to <see cref="MaxReportAge"/> old (the web client sends the position of its last update).
+/// Each gets ± <see cref="ReportTolerance"/> for the time the report took to arrive.</description></item>
 /// <item><description>A report that agrees with the range narrows it; one that contradicts it (a seek, or the clocks
 /// drifted apart) replaces it.</description></item>
 /// <item><description>While playing, the range moves with time and widens by <see cref="DriftRate"/> of the elapsed
@@ -28,14 +29,17 @@ internal sealed class PositionTracker
     /// <summary>How much faster or slower than the server's clock a client may play (0.1 %).</summary>
     internal const double DriftRate = 0.001;
 
-    /// <summary>How far the real position may be from the first report.</summary>
+    /// <summary>How far the real position may be from a start report.</summary>
     internal static readonly TimeSpan StartUncertainty = TimeSpan.FromSeconds(1);
 
-    /// <summary>How far the real position may be from a report, beyond its precision.</summary>
+    /// <summary>How far the real position may be from any other report, beyond its precision.</summary>
     internal static readonly TimeSpan ReportTolerance = TimeSpan.FromMilliseconds(100);
 
     /// <summary>The precision of a whole-second position: the real one may be up to this much later.</summary>
     internal static readonly TimeSpan TruncatedPrecision = TimeSpan.FromSeconds(1);
+
+    /// <summary>How old a millisecond position reported while playing may be (the web client's update interval).</summary>
+    internal static readonly TimeSpan MaxReportAge = TimeSpan.FromMilliseconds(250);
 
     // The real position at _at lies between _earliest and _latest.
     private TimeSpan _earliest;
@@ -44,14 +48,16 @@ internal sealed class PositionTracker
     private bool _paused;
 
     /// <summary>Initializes a new instance of the <see cref="PositionTracker"/> class.</summary>
-    /// <param name="start">The first known state of the playback.</param>
-    public PositionTracker(PlaybackState start)
+    /// <param name="first">The first known state of the playback: usually the start report, but a session can also
+    /// begin from a later report (Jellyfin restarted during playback, the device filter changed).</param>
+    public PositionTracker(PlaybackState first)
     {
-        ArgumentNullException.ThrowIfNull(start);
-        _earliest = start.Position - StartUncertainty;
-        _latest = start.Position + StartUncertainty;
-        _at = start.ReportedAt;
-        _paused = start.IsPaused;
+        ArgumentNullException.ThrowIfNull(first);
+        _at = first.ReportedAt;
+        _paused = first.IsPaused;
+        (_earliest, _latest) = first.IsStart || !first.IsPositionReported
+            ? StartRange(first.Position)
+            : ReportRange(first.Position, first.IsPaused);
     }
 
     /// <summary>Gets half the width of the range: how far the estimate may be off at most.</summary>
@@ -84,11 +90,31 @@ internal sealed class PositionTracker
                 position += at - report.ReportedAt;
             }
 
-            Narrow(position);
+            if (report.IsStart)
+            {
+                // A new start: the old range says nothing about it.
+                (_earliest, _latest) = StartRange(position);
+            }
+            else
+            {
+                Narrow(ReportRange(position, report.IsPaused));
+            }
         }
 
         _paused = report.IsPaused;
         return Estimate(at) - before;
+    }
+
+    private static (TimeSpan Earliest, TimeSpan Latest) StartRange(TimeSpan position)
+        => (position - StartUncertainty, position + StartUncertainty);
+
+    private static (TimeSpan Earliest, TimeSpan Latest) ReportRange(TimeSpan position, bool paused)
+    {
+        // 0 is not taken as truncated: every client reports the very start as 0.
+        var precision = position > TimeSpan.Zero && position.Ticks % TimeSpan.TicksPerSecond == 0
+            ? TruncatedPrecision
+            : paused ? TimeSpan.Zero : MaxReportAge;
+        return (position - ReportTolerance, position + precision + ReportTolerance);
     }
 
     private void MoveTo(DateTimeOffset at)
@@ -104,27 +130,22 @@ internal sealed class PositionTracker
         _at = at;
     }
 
-    private void Narrow(TimeSpan position)
+    private void Narrow((TimeSpan Earliest, TimeSpan Latest) report)
     {
-        // 0 is taken as exact: every client reports the very start as 0.
-        var truncated = position > TimeSpan.Zero && position.Ticks % TimeSpan.TicksPerSecond == 0;
-        var earliest = position - ReportTolerance;
-        var latest = position + ReportTolerance + (truncated ? TruncatedPrecision : TimeSpan.Zero);
-        if (earliest > _latest || latest < _earliest)
+        if (report.Earliest > _latest || report.Latest < _earliest)
         {
-            _earliest = earliest;
-            _latest = latest;
+            (_earliest, _latest) = report;
             return;
         }
 
-        if (earliest > _earliest)
+        if (report.Earliest > _earliest)
         {
-            _earliest = earliest;
+            _earliest = report.Earliest;
         }
 
-        if (latest < _latest)
+        if (report.Latest < _latest)
         {
-            _latest = latest;
+            _latest = report.Latest;
         }
     }
 }
