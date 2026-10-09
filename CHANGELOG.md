@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.4.0...v0.5.0) (2026-10-09)
+
+
+### Features
+
+* reconnect to Hyperion with backoff ([#28](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/28)) ([ab53823](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/ab53823ffdd117464b69bf5d06ba194fd3e6b848))
+
 ## [0.4.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.3.0...v0.4.0) (2026-10-07)
 
 
