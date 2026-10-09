@@ -455,11 +455,73 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
 
         var times = _connectTimes.ToArray();
         Assert.Equal(expected, times.Zip(times.Skip(1), (previous, next) => next - previous));
-        Assert.False(Source.IsDisposed);
         Assert.False(session.Completion.IsCompleted);
         Assert.Single(_logs.Collector.GetSnapshot(), r => r.Level >= LogLevel.Warning); // One warning, not one per attempt.
         AssertLogged(LogLevel.Warning, "Could not connect to hyperion.local:19400");
         AssertLogged(LogLevel.Debug, "next attempt in 30 s");
+    }
+
+    [Fact]
+    public async Task LongOutage_StopsDecoding_KeepsTryingAndDecodesFromThePositionWhenHyperionIsBack()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.End();
+        await TickAsync(session); // 0.1 s: attempt 1 fails; the outage starts.
+        var first = Source;
+
+        await AdvanceAsync(session, TimeSpan.FromSeconds(59.9)); // 60 s: attempt 2 fails; still decoding.
+        Assert.False(first.IsDisposed);
+        await TickAsync(session); // 60.1 s: a minute without Hyperion.
+
+        await TestHelpers.WaitUntilAsync(() => first.IsDisposed);
+        AssertLogged(LogLevel.Information, "Hyperion has been unreachable for 60 s: stopped decoding");
+
+        await AdvanceAsync(session, TimeSpan.FromSeconds(2)); // 62.1 s: attempt 3 fails; no decoding.
+        Assert.Equal(3, _connects);
+        Assert.Single(_sources);
+
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(4)); // 66.1 s: attempt 4 connects.
+
+        await TestHelpers.WaitUntilAsync(() => _sources.Count == 2);
+        Assert.Equal(4, _connects);
+        Assert.Equal(TimeSpan.FromSeconds(66.1), Source.Options.StartPosition);
+        Assert.Equal(0, session.Restarts);
+        AssertLogged(LogLevel.Information, "Hyperion is back: decoding again");
+
+        Source.Push(3); // Frames at 66.1, 66.2 and 66.3 s.
+        await TickAsync(session);
+
+        Assert.Equal(1, _connection.Images[^1]); // The new decoder's frame at 66.2 s.
+        AssertLogged(LogLevel.Information, "Reconnected to Hyperion after 4 attempt(s)");
+    }
+
+    [Fact]
+    public async Task SeekWhileDecodingIsStopped_DecodesFromTheNewPositionWhenHyperionIsBack()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.End();
+        await TickAsync(session); // 0.1 s: attempt 1 fails.
+        await AdvanceAsync(session, TimeSpan.FromSeconds(59.9)); // 60 s: attempt 2 fails; the next one is due at 62 s.
+        await TickAsync(session); // 60.1 s: decoding stopped.
+        await TestHelpers.WaitUntilAsync(() => Source.IsDisposed);
+
+        var target = TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(250);
+        session.Update(State(target, paused: true));
+        await TickAsync(session); // 60.2 s: the seek starts no decoder.
+        Assert.Single(_sources);
+
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1.9)); // 62.1 s: attempt 3 connects.
+
+        await TestHelpers.WaitUntilAsync(() => _sources.Count == 2);
+        Assert.Equal(3, _connects);
+        Assert.Equal(target, Source.Options.StartPosition);
+        Assert.Equal(0, session.Restarts);
     }
 
     [Fact]

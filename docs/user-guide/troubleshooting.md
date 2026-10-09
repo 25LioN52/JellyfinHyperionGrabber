@@ -59,23 +59,27 @@ hardware decoding for the video's codec in Jellyfin.
 ## Hyperion restarted during playback
 
 When Hyperion restarts (a Docker container update, a NAS reboot, some settings changes) or the network drops, the
-lights go off and come back by themselves while the video keeps playing. The plugin keeps decoding and tries to
-reconnect after 1 s, then after 2, 4, 8 and 16 s, and from then on every 30 s. Usually Hyperion is back within a few
-seconds; after a long outage the lights can take up to 30 s longer than Hyperion. They come back at the current picture,
-not the one from when the connection was lost. Pausing longer than the pause release time stops the attempts until you
+lights go off and come back by themselves while the video keeps playing. The plugin tries to reconnect after 1 s,
+then after 2, 4, 8 and 16 s, and from then on every 30 s. Usually Hyperion is back within a few seconds; after a long
+outage the lights can take up to 30 s longer than Hyperion. They come back at the current picture, not the one from
+when the connection was lost. During the first minute the plugin keeps decoding, so a quick restart resumes at once;
+after that it stops decoding (no load on the server while Hyperion is off or misconfigured) and starts again from the
+current position as soon as Hyperion is back. Pausing longer than the pause release time stops the attempts until you
 resume.
 
 In **Dashboard → Logs** an outage looks like this:
 
 ```text
 [WRN] Hyperion at 192.168.1.10:19400 closed the connection
-[WRN] Hyperion is unreachable; reconnecting every 1-30 s while decoding goes on: The connection to Hyperion at 192.168.1.10:19400 is closed.
+[WRN] Hyperion is unreachable; reconnecting every 1-30 s: The connection to Hyperion at 192.168.1.10:19400 is closed.
 [INF] Connected to Hyperion at 192.168.1.10:19400 with priority 150
 [INF] Reconnected to Hyperion after 3 attempt(s) and 7 s; streaming again
 ```
 
 There is one warning per outage, not one per attempt. With [debug logging](#debug-logging), every failed attempt adds
-`Connecting to Hyperion failed (attempt N): …; next attempt in S s`. If the lights do not come back although Hyperion
+`Connecting to Hyperion failed (attempt N): …; next attempt in S s`. An outage longer than a minute adds
+`Hyperion has been unreachable for 60 s: stopped decoding until it is back` and, when it is,
+`Hyperion is back: decoding again from …`. If the lights do not come back although Hyperion
 runs again, check that its FlatBuffers server is enabled after the restart, and use **Test connection**.
 
 ## The lights are late or early

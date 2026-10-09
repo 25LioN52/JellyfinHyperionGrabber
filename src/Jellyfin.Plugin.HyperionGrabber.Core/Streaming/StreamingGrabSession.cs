@@ -34,7 +34,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// <para>When Hyperion cannot be reached, rejects the registration or drops the connection, the session reconnects with
 /// exponential backoff (<see cref="FirstRetryDelay"/> doubling up to <see cref="MaxRetryDelay"/>, reset by a successful
 /// send). The connect runs as one task the ticks check, so a slow connect never stalls pacing; meanwhile decoding goes
-/// on and due frames are dropped, so the first frame after reconnecting is the one at the playback position.</para>
+/// on and due frames are dropped, so the first frame after reconnecting is the one at the playback position. After
+/// <see cref="StopDecodingAfter"/> without Hyperion, FFmpeg is stopped and only the connect attempts go on; once one
+/// succeeds, decoding starts again at the playback position.</para>
 /// <para>A decoding error stops the stream and releases Hyperion's priority; the session then idles until it is
 /// disposed.</para>
 /// </remarks>
@@ -60,6 +62,10 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
     /// <summary>Longest wait between reconnect attempts.</summary>
     internal static readonly TimeSpan MaxRetryDelay = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long decoding goes on while Hyperion is unreachable: long enough to resume at once after a restart,
+    /// short enough not to decode a whole movie for nothing when Hyperion is off or misconfigured.</summary>
+    internal static readonly TimeSpan StopDecodingAfter = TimeSpan.FromMinutes(1);
 
     private readonly StreamingGrabSessionFactory _factory;
     private readonly TimeProvider _timeProvider;
@@ -102,6 +108,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private int _failures; // Since the last successful send.
     private DateTimeOffset? _disconnectedSince;
     private DateTimeOffset _retryAt;
+    private bool _decodingStopped; // During a long Hyperion outage.
 
     private StreamingGrabSession(StreamingGrabSessionFactory factory, PlaybackState state, Task previousHyperionReleased)
     {
@@ -298,6 +305,25 @@ internal sealed partial class StreamingGrabSession : IGrabSession
                 }
 
                 position = TargetPosition(now);
+                if (_decodingStopped)
+                {
+                    // A long Hyperion outage: only check whether it is back, then decode from the position (seeks included).
+                    if (GetConnection(plan.Hyperion, now, token) is not null)
+                    {
+                        _decodingStopped = false;
+                        Log.DecodingResumed(_logger, position);
+                        StartSource(options, position, now);
+                    }
+
+                    continue;
+                }
+
+                if (IsLongOutage(now))
+                {
+                    await StopDecodingAsync(now).ConfigureAwait(false);
+                    continue;
+                }
+
                 if (seek)
                 {
                     Log.Seek(_logger, position);
@@ -480,6 +506,35 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         Log.ConnectFailed(_logger, _connectAttempts, failure.Message, delay.TotalSeconds);
     }
 
+    /// <summary>Checks whether Hyperion has been unreachable for <see cref="StopDecodingAfter"/> while this decoder ran.</summary>
+    private bool IsLongOutage(DateTimeOffset now)
+    {
+        if (_connection is not null || _disconnectedSince is not { } since)
+        {
+            return false;
+        }
+
+        // A decoder started during the outage (a seek, or a connect that did not last) gets the full time again.
+        var from = since > _sourceStartedAt ? since : _sourceStartedAt;
+        return now - from >= StopDecodingAfter;
+    }
+
+    /// <summary>Stops FFmpeg during a long outage; the connect attempts go on.</summary>
+    private async Task StopDecodingAsync(DateTimeOffset now)
+    {
+        var outage = Math.Round((now - _disconnectedSince!.Value).TotalSeconds); // Once per outage.
+        Log.DecodingStopped(_logger, outage);
+        _decodingStopped = true;
+        _hasLastFrame = false; // Stale by the time Hyperion is back.
+        _pending?.Dispose();
+        _pending = null;
+        if (_source is { } source)
+        {
+            _source = null;
+            await source.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private void ResetReconnect()
     {
         _connectAttempts = 0;
@@ -509,23 +564,22 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         Justification = "Runs unobserved after the session gave up the connect; a failure must be logged, not left as an unobserved task exception.")]
     private async Task CloseLateConnectionAsync(Task<IHyperionConnection> connecting, CancellationTokenSource cancellation)
     {
-        try
+        using (cancellation)
         {
-            await cancellation.CancelAsync().ConfigureAwait(false);
-            var connection = await connecting.ConfigureAwait(false);
-            await connection.DisposeAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or HyperionConnectionException or HyperionProtocolException)
-        {
-            // Expected: the connect was cancelled or failed.
-        }
-        catch (Exception ex)
-        {
-            Log.Unexpected(_logger, ex);
-        }
-        finally
-        {
-            cancellation.Dispose();
+            try
+            {
+                await cancellation.CancelAsync().ConfigureAwait(false);
+                var connection = await connecting.ConfigureAwait(false);
+                await connection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or HyperionConnectionException or HyperionProtocolException)
+            {
+                // Expected: the connect was cancelled or failed.
+            }
+            catch (Exception ex)
+            {
+                Log.Unexpected(_logger, ex);
+            }
         }
     }
 
@@ -674,6 +728,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     {
         var abandoned = AbandonConnect();
         ResetReconnect();
+        _decodingStopped = false; // Everything is released; a resume starts decoding again.
         var connection = _connection;
         _connection = null;
         _pending?.Dispose();
@@ -742,7 +797,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         [LoggerMessage(EventId = 14, Level = LogLevel.Debug, Message = "Position report {Position} (reported: {Reported}, paused: {Paused}) moved the estimate by {Moved}; uncertainty ±{Uncertainty}")]
         public static partial void Report(ILogger logger, TimeSpan position, bool reported, bool paused, TimeSpan moved, TimeSpan uncertainty);
 
-        [LoggerMessage(EventId = 15, Level = LogLevel.Warning, Message = "Hyperion is unreachable; reconnecting every 1-30 s while decoding goes on: {Reason}")]
+        [LoggerMessage(EventId = 15, Level = LogLevel.Warning, Message = "Hyperion is unreachable; reconnecting every 1-30 s: {Reason}")]
         public static partial void Reconnecting(ILogger logger, string reason);
 
         [LoggerMessage(EventId = 16, Level = LogLevel.Debug, Message = "Connecting to Hyperion failed (attempt {Attempt}): {Reason}; next attempt in {Seconds} s")]
@@ -753,5 +808,11 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 18, Level = LogLevel.Debug, Message = "Waiting for the previous playback to release Hyperion before connecting")]
         public static partial void WaitingForPreviousSession(ILogger logger);
+
+        [LoggerMessage(EventId = 19, Level = LogLevel.Information, Message = "Hyperion has been unreachable for {Seconds} s: stopped decoding until it is back")]
+        public static partial void DecodingStopped(ILogger logger, double seconds);
+
+        [LoggerMessage(EventId = 20, Level = LogLevel.Information, Message = "Hyperion is back: decoding again from {Position}")]
+        public static partial void DecodingResumed(ILogger logger, TimeSpan position);
     }
 }

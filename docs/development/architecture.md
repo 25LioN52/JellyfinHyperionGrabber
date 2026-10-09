@@ -126,9 +126,11 @@ How a session behaves:
 - **Hyperion failures:** a refused or timed-out connect, a rejected registration or a lost connection does not end
   the stream. The session reconnects after 1 s, then 2, 4, 8, 16 and every 30 s; a successful send resets the delay.
   The connect is one task owned by the session and checked on each tick, so a connect that takes its full 5 s connect
-  plus 5 s reply timeout never stalls pacing. Meanwhile FFmpeg keeps decoding, due frames go back to the pool (counted
-  as dropped) and no keep-alives are sent, so the first frame after reconnecting is the one at the playback position.
-  No attempts while released for a long pause; resuming connects at once ([ADR 0010](adr/0010-reconnect-with-backoff.md)).
+  plus 5 s reply timeout never stalls pacing. For the first minute FFmpeg keeps decoding, due frames go back to the
+  pool (counted as dropped) and no keep-alives are sent, so the first frame after reconnecting is the one at the
+  playback position. After a minute FFmpeg is stopped and only the attempts go on; once one succeeds, decoding starts
+  again at the playback position. No attempts while released for a long pause; resuming connects at once
+  ([ADR 0010](adr/0010-reconnect-with-backoff.md)).
 - **Stop and failures:** stopping or a decoding error kills FFmpeg and disposes the Hyperion client (which clears the
   priority) in parallel. A connect still in flight is cancelled and its connection, should it still open, closed at
   once. `DisposeAsync` waits at most 5 s, so the monitor never stalls. A new session connects only after the previous
