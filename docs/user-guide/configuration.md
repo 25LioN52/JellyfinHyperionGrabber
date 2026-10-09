@@ -36,9 +36,9 @@ Seeking jumps with the video, and stopping releases the priority so Hyperion fal
 otherwise. Only videos from your libraries are streamed; see
 [what is not supported](troubleshooting.md#the-lights-do-not-follow-a-video).
 
-!!! note "Early preview"
-    If Hyperion restarts or the network drops during playback, the lights stay off until the next playback
-    (reconnecting is *(planned)*).
+If Hyperion restarts or the network drops during playback, the plugin reconnects by itself (after 1 s, then up to every
+30 s) and the lights continue at the current picture; see
+[Hyperion restarted during playback](troubleshooting.md#hyperion-restarted-during-playback).
 
 | Setting | Default | Description |
 | --- | --- | --- |

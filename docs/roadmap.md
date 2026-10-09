@@ -17,7 +17,7 @@ Milestones are deliberately small so each one ships something usable. Items beco
 - [x] Frame source: Jellyfin's FFmpeg decodes the playing media source from its position, scaled on the GPU to
       about 160 px wide, keeping the aspect ratio; uses Jellyfin's hardware acceleration settings, CPU fallback
 - [x] Stream to Hyperion at a configurable frame rate (default 25), bounded buffers, frame dropping under load
-- [ ] Reconnect with backoff when Hyperion restarts; release the priority on stop
+- [x] Reconnect with backoff when Hyperion restarts; release the priority on stop *(shipped in 0.5)*
 - [ ] End-to-end test against a real Hyperion.ng in CI (container); verify the multi-instance (WLED + Hue) behaviour
 - [ ] Diagnostics: status panel on the config page (connected, fps, current session)
 

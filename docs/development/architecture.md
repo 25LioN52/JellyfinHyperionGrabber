@@ -46,7 +46,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | --- | --- |
 | `FlatBufferWriter`, `HyperionRequestWriter` | Allocation-free encoding of Register, Image, Clear, Color with the size prefix |
 | `FlatBufferReader`, `HyperionReplyReader` | Bounds-checked decoding of replies from the network |
-| `HyperionClient` | One registered connection: connect/register with timeouts, serialized sends, reply-draining receive loop, Clear on dispose. Never reconnects itself. |
+| `HyperionClient` | One registered connection: connect/register with timeouts, serialized sends, reply-draining receive loop, Clear on dispose. Never reconnects itself; `StreamingGrabSession` does ([ADR 0010](adr/0010-reconnect-with-backoff.md)). |
 | `IHyperionSink` | Abstraction of "where frames go"; `HyperionClient` implements it, tests use `RecordingSink` |
 | `TestPattern`, `TestPatternPlayer` | Layout test picture and its paced playback, always clearing afterwards |
 | `HyperionConnectionTester` | Config-page actions; returns results instead of throwing |
@@ -123,11 +123,20 @@ How a session behaves:
   with the first frame.
 - **Seek:** a report that moves the estimate by more than 1 s restarts FFmpeg at the new position. A decoder lagging more
   than 2 s behind is restarted too, after a 5 s grace period for opening and seeking the file.
-- **Stop and failures:** stopping, a lost connection or a decoding error kills FFmpeg and disposes the Hyperion client
-  (which clears the priority) in parallel. `DisposeAsync` waits at most 5 s, so the monitor never stalls.
-- **Logging:** Information for start (`Streaming 160x90 at 25 fps …`) and stop (frames sent, dropped, decoder
-  restarts), Debug for seeks, pause changes and position reports (how far each moved the estimate, and the remaining
-  uncertainty), nothing per frame.
+- **Hyperion failures:** a refused or timed-out connect, a rejected registration or a lost connection does not end
+  the stream. The session reconnects after 1 s, then 2, 4, 8, 16 and every 30 s; a successful send resets the delay.
+  The connect is one task owned by the session and checked on each tick, so a connect that takes its full 5 s connect
+  plus 5 s reply timeout never stalls pacing. Meanwhile FFmpeg keeps decoding, due frames go back to the pool (counted
+  as dropped) and no keep-alives are sent, so the first frame after reconnecting is the one at the playback position.
+  No attempts while released for a long pause; resuming connects at once ([ADR 0010](adr/0010-reconnect-with-backoff.md)).
+- **Stop and failures:** stopping or a decoding error kills FFmpeg and disposes the Hyperion client (which clears the
+  priority) in parallel. A connect still in flight is cancelled and its connection, should it still open, closed at
+  once. `DisposeAsync` waits at most 5 s, so the monitor never stalls. A new session connects only after the previous
+  one released Hyperion (at most 5 s more), so two sessions never hold the same priority.
+- **Logging:** Information for start (`Streaming 160x90 at 25 fps …`), stop (frames sent, dropped, decoder
+  restarts) and a reconnect (attempts, downtime), one Warning per Hyperion outage, Debug for each failed connect
+  attempt (with the next delay), seeks, pause changes and position reports (how far each moved the estimate, and the
+  remaining uncertainty), nothing per frame.
 
 Design rules for the pipeline:
 
@@ -141,7 +150,7 @@ Design rules for the pipeline:
 - **Process hygiene.** FFmpeg processes are always killed and awaited when a session ends, including on errors and
   server shutdown.
 
-Still planned: reconnecting after Hyperion restarts (M1), a per-device timing offset and a precise Kodi clock (M2),
+Still planned: a status panel (M1), a per-device timing offset and a precise Kodi clock (M2),
 HDR tone mapping and multiple targets (M3). See the [roadmap](../roadmap.md).
 
 ## Threading

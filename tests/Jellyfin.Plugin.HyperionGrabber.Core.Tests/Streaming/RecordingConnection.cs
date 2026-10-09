@@ -10,7 +10,7 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests.Streaming;
 
 /// <summary>
 /// <see cref="IHyperionConnection"/> that records the first byte (the <see cref="FakeFrameSource"/> frame number) of
-/// every image, can hold sends (a slow Hyperion) and fail them (a lost connection).
+/// every image, can hold sends (a slow Hyperion) and disposal (a slow release), and fail sends (a lost connection).
 /// </summary>
 internal sealed class RecordingConnection : IHyperionConnection
 {
@@ -27,6 +27,9 @@ internal sealed class RecordingConnection : IHyperionConnection
     /// <summary>Gets or sets a task every send waits for after recording its image.</summary>
     public Task SendGate { get; set; } = Task.CompletedTask;
 
+    /// <summary>Gets or sets a task <see cref="DisposeAsync"/> waits for after marking the connection disposed.</summary>
+    public Task DisposeGate { get; set; } = Task.CompletedTask;
+
     public bool FailSends { get; set; }
 
     public async ValueTask SendImageAsync(ReadOnlyMemory<byte> rgb24, int width, int height, CancellationToken cancellationToken)
@@ -42,10 +45,10 @@ internal sealed class RecordingConnection : IHyperionConnection
 
     public ValueTask ClearAsync(CancellationToken cancellationToken) => ValueTask.CompletedTask;
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref _disposed, 1);
-        return ValueTask.CompletedTask;
+        await DisposeGate;
     }
 
     public override string ToString() => string.Join(", ", Images.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
