@@ -14,6 +14,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// </summary>
 public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
 {
+    private readonly Lock _gate = new();
+    private Task _previousHyperionReleased = Task.CompletedTask;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamingGrabSessionFactory"/> class.
     /// </summary>
@@ -90,9 +93,16 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
     internal ILogger SessionLogger { get; }
 
     /// <inheritdoc />
+    /// <remarks>A session connects to Hyperion only after the previous one released it (see
+    /// <see cref="StreamingGrabSession.HyperionReleased"/>), so they never share the priority.</remarks>
     public IGrabSession Start(PlaybackState state)
     {
         ArgumentNullException.ThrowIfNull(state);
-        return StreamingGrabSession.Start(this, state);
+        lock (_gate)
+        {
+            var session = StreamingGrabSession.Start(this, state, _previousHyperionReleased);
+            _previousHyperionReleased = session.HyperionReleased;
+            return session;
+        }
     }
 }

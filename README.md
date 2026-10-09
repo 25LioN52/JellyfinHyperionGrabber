@@ -17,8 +17,8 @@ LED device they support.
 
 > [!NOTE]
 > **Early preview (v0.x).** The current version streams library videos to Hyperion/HyperHDR while they play on the
-> devices you select, and plays an LED layout test pattern. Reconnecting, latency calibration and HDR tone mapping are
-> next, see the [roadmap](https://25lion52.github.io/JellyfinHyperionGrabber/roadmap/).
+> devices you select, and plays an LED layout test pattern. A status panel, per-device latency calibration and HDR tone
+> mapping are next, see the [roadmap](https://25lion52.github.io/JellyfinHyperionGrabber/roadmap/).
 
 ## Why
 

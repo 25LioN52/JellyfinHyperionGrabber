@@ -23,16 +23,21 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
 {
     private static readonly Guid Movie = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(100);
+    private static readonly int[] BackoffSeconds = [1, 2, 4, 8, 16, 30, 30];
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 5, 20, 0, 0, TimeSpan.Zero));
     private readonly ConcurrentQueue<FakeFrameSource> _sources = new();
     private readonly FakeLoggerProvider _logs = new();
     private readonly LoggerFactory _loggerFactory;
+    private readonly ConcurrentQueue<DateTimeOffset> _connectTimes = new();
     private RecordingConnection _connection = new();
     private StreamingSettings _settings = new() { Hyperion = new HyperionClientOptions { Host = "hyperion.local" }, FramesPerSecond = 10 };
     private VideoInputResult _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
     private Exception? _connectFailure;
+    private TaskCompletionSource<IHyperionConnection>? _pendingConnect;
+    private CancellationToken _connectToken;
     private int _connects;
+    private StreamingGrabSessionFactory? _factory;
     private StreamingGrabSession? _session;
 
     public StreamingGrabSessionTests() => _loggerFactory = new LoggerFactory([_logs]);
@@ -401,18 +406,279 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task ConnectionLost_StopsDecoding()
+    public async Task ConnectionLost_ReconnectsAfterOneSecond_AtTheCurrentPosition()
     {
         var session = await StartStreamingAsync();
-        Source.Push(5);
-        _connection.FailSends = true;
+        Source.Push(30);
+        await TickAsync(session); // 100 ms: frame 1.
+        var lost = _connection;
+        lost.FailSends = true;
 
-        _time.Advance(Interval);
-        await session.Completion;
+        await TickAsync(session); // 200 ms: sending frame 2 fails.
 
-        Assert.True(Source.IsDisposed);
-        Assert.True(_connection.IsDisposed);
+        Assert.True(lost.IsDisposed);
+        Assert.False(Source.IsDisposed); // Decoding goes on.
         AssertLogged(LogLevel.Warning, "Simulated connection loss");
+
+        await TickAsync(session, 9); // 1.1 s: still waiting.
+        Assert.Equal(1, _connects);
+
+        await TickAsync(session); // 1.2 s: one second after the loss.
+
+        Assert.Equal(2, _connects);
+        Assert.NotSame(lost, _connection);
+        Assert.Equal([12], _connection.Images); // The frame at the playback position, not the one at the loss.
+        Assert.Single(_sources);
+        Assert.Equal(0, session.Restarts);
+        Assert.Equal(11, session.FramesDropped); // Frame 0, plus frames 2-11 that could not be sent.
+        AssertLogged(LogLevel.Information, "Reconnected to Hyperion after 1 attempt(s) and 1 s");
+    }
+
+    [Fact]
+    public async Task HyperionUnreachable_RetriesWithExponentialBackoffUpTo30Seconds()
+    {
+        _connectFailure = new HyperionConnectionException("Could not connect to hyperion.local:19400: refused.");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.End();
+        await TickAsync(session); // The first attempt fails.
+        TimeSpan[] expected = [.. BackoffSeconds.Select(seconds => TimeSpan.FromSeconds(seconds))];
+
+        foreach (var delay in expected)
+        {
+            var attempts = _connects;
+            await AdvanceAsync(session, delay - Interval);
+            Assert.Equal(attempts, _connects);
+            await AdvanceAsync(session, Interval);
+            Assert.Equal(attempts + 1, _connects);
+        }
+
+        var times = _connectTimes.ToArray();
+        Assert.Equal(expected, times.Zip(times.Skip(1), (previous, next) => next - previous));
+        Assert.False(session.Completion.IsCompleted);
+        Assert.Single(_logs.Collector.GetSnapshot(), r => r.Level >= LogLevel.Warning); // One warning, not one per attempt.
+        AssertLogged(LogLevel.Warning, "Could not connect to hyperion.local:19400");
+        AssertLogged(LogLevel.Debug, "next attempt in 30 s");
+    }
+
+    [Fact]
+    public async Task LongOutage_StopsDecoding_KeepsTryingAndDecodesFromThePositionWhenHyperionIsBack()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.End();
+        await TickAsync(session); // 0.1 s: attempt 1 fails; the outage starts.
+        var first = Source;
+
+        await AdvanceAsync(session, TimeSpan.FromSeconds(59.9)); // 60 s: attempt 2 fails; still decoding.
+        Assert.False(first.IsDisposed);
+        await TickAsync(session); // 60.1 s: a minute without Hyperion.
+
+        await TestHelpers.WaitUntilAsync(() => first.IsDisposed);
+        AssertLogged(LogLevel.Information, "Hyperion has been unreachable for 60 s: stopped decoding");
+
+        await AdvanceAsync(session, TimeSpan.FromSeconds(2)); // 62.1 s: attempt 3 fails; no decoding.
+        Assert.Equal(3, _connects);
+        Assert.Single(_sources);
+
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(4)); // 66.1 s: attempt 4 connects.
+
+        await TestHelpers.WaitUntilAsync(() => _sources.Count == 2);
+        Assert.Equal(4, _connects);
+        Assert.Equal(TimeSpan.FromSeconds(66.1), Source.Options.StartPosition);
+        Assert.Equal(0, session.Restarts);
+        AssertLogged(LogLevel.Information, "Hyperion is back: decoding again");
+
+        Source.Push(3); // Frames at 66.1, 66.2 and 66.3 s.
+        await TickAsync(session);
+
+        Assert.Equal(1, _connection.Images[^1]); // The new decoder's frame at 66.2 s.
+        AssertLogged(LogLevel.Information, "Reconnected to Hyperion after 4 attempt(s)");
+    }
+
+    [Fact]
+    public async Task SeekWhileDecodingIsStopped_DecodesFromTheNewPositionWhenHyperionIsBack()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        Source.End();
+        await TickAsync(session); // 0.1 s: attempt 1 fails.
+        await AdvanceAsync(session, TimeSpan.FromSeconds(59.9)); // 60 s: attempt 2 fails; the next one is due at 62 s.
+        await TickAsync(session); // 60.1 s: decoding stopped.
+        await TestHelpers.WaitUntilAsync(() => Source.IsDisposed);
+
+        var target = TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(250);
+        session.Update(State(target, paused: true));
+        await TickAsync(session); // 60.2 s: the seek starts no decoder.
+        Assert.Single(_sources);
+
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1.9)); // 62.1 s: attempt 3 connects.
+
+        await TestHelpers.WaitUntilAsync(() => _sources.Count == 2);
+        Assert.Equal(3, _connects);
+        Assert.Equal(target, Source.Options.StartPosition);
+        Assert.Equal(0, session.Restarts);
+    }
+
+    [Fact]
+    public async Task SuccessfulSend_ResetsTheBackoff()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(100);
+        await TickAsync(session); // 0.1 s: attempt 1 fails.
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1)); // 1.1 s: attempt 2 fails.
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(2)); // 3.1 s: attempt 3 connects.
+        Assert.Equal([31], _connection.Images);
+        AssertLogged(LogLevel.Information, "Reconnected to Hyperion after 3 attempt(s) and 3 s");
+
+        _connection.FailSends = true;
+        await TickAsync(session); // 3.2 s: lost.
+        await AdvanceAsync(session, TimeSpan.FromMilliseconds(900));
+        Assert.Equal(3, _connects);
+        await AdvanceAsync(session, Interval); // 4.2 s: one second, not four.
+
+        Assert.Equal(4, _connects);
+        Assert.Equal([42], _connection.Images);
+    }
+
+    [Fact]
+    public async Task Disconnected_KeepsDecodingAndReturnsFramesToThePool()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(20);
+
+        await TickAsync(session, 5);
+
+        Assert.Equal(1, _connects);
+        Assert.Equal(0, session.FramesSent);
+        Assert.Equal(6, session.FramesDropped); // Frames 0-5 were due; none could be sent.
+        Assert.Equal(14, Source.Outstanding); // Only frames 6-19, which are not due yet, are out of the pool.
+        Assert.Equal(0, session.Restarts);
+    }
+
+    [Fact]
+    public async Task SlowConnect_DoesNotStallTheTicks()
+    {
+        var connect = new TaskCompletionSource<IHyperionConnection>(); // Completes the session's connect inline, before the next tick.
+        _pendingConnect = connect;
+        var session = await StartStreamingAsync();
+        Source.Push(20);
+
+        await TickAsync(session, 5); // The connect started at 100 ms is still in flight.
+
+        Assert.Equal(1, _connects);
+        Assert.Equal(14, Source.Outstanding);
+
+        _pendingConnect = null;
+        connect.SetResult(_connection);
+        await TickAsync(session);
+
+        Assert.Equal([6], _connection.Images);
+        Assert.Equal(1, _connects);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DuringTheBackoffWait_ReturnsPromptly()
+    {
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        await TickAsync(session);
+
+        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), Ct); // Without advancing the clock.
+
+        Assert.True(session.Completion.IsCompletedSuccessfully);
+        Assert.True(Source.IsDisposed);
+        Assert.Equal(1, _connects);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DuringAConnect_ReturnsPromptlyAndClosesTheLateConnection()
+    {
+        var connect = new TaskCompletionSource<IHyperionConnection>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingConnect = connect;
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        await TickAsync(session);
+
+        await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), Ct);
+
+        Assert.True(session.Completion.IsCompletedSuccessfully);
+        Assert.True(Source.IsDisposed);
+        Assert.True(_connectToken.IsCancellationRequested);
+
+        var late = new RecordingConnection();
+        connect.SetResult(late);
+
+        await TestHelpers.WaitUntilAsync(() => late.IsDisposed);
+        Assert.Empty(late.Images);
+        Assert.Equal(1, _connects);
+    }
+
+    [Fact]
+    public async Task LongPause_WhileDisconnected_MakesNoAttemptsUntilResume()
+    {
+        _settings = _settings with { PauseRelease = TimeSpan.FromSeconds(1) };
+        _connectFailure = new HyperionConnectionException("refused");
+        var session = await StartStreamingAsync();
+        Source.Push(10);
+        await TickAsync(session); // 0.1 s: attempt 1 fails.
+        session.Update(State(TimeSpan.FromMilliseconds(100), paused: true));
+        await TickAsync(session, 12); // 1.1 s: attempt 2 (still holding the frame); 1.2 s: released.
+        AssertLogged(LogLevel.Information, "released Hyperion until playback resumes");
+        var attempts = _connects;
+
+        await AdvanceAsync(session, TimeSpan.FromMinutes(1));
+
+        Assert.Equal(2, attempts);
+        Assert.Equal(attempts, _connects);
+
+        _connectFailure = null;
+        session.Update(State(TimeSpan.FromMilliseconds(100)));
+        await TickAsync(session);
+        Source.Push(3); // Frames at 200, 300, 400 ms.
+        await TickAsync(session);
+
+        Assert.Equal(attempts + 1, _connects); // Connected at once with the first frame, without a backoff wait.
+        Assert.Equal([1], _connection.Images);
+    }
+
+    [Fact]
+    public async Task NewSession_WaitsUntilTheStoppedSessionReleasedHyperion()
+    {
+        // The previous session's stop timed out while its connection was still clearing the same priority.
+        var first = await StartStreamingAsync();
+        Source.Push(3);
+        await TickAsync(first);
+        var firstConnection = _connection;
+        var clearing = new TaskCompletionSource();
+        firstConnection.DisposeGate = clearing.Task;
+        var stop = first.DisposeAsync().AsTask();
+        await TestHelpers.WaitUntilAsync(() =>
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            return stop.IsCompleted;
+        });
+
+        var second = await StartStreamingAsync();
+        Source.Push(3);
+        await TickAsync(second, 3);
+
+        Assert.Equal(1, _connects); // Not connected while the first connection still holds the priority.
+
+        clearing.SetResult();
+        await TestHelpers.WaitUntilAsync(() => _connects == 2);
+        await TickAsync(second);
+
+        Assert.NotSame(firstConnection, _connection);
+        Assert.Equal([2], _connection.Images);
     }
 
     [Fact]
@@ -500,17 +766,19 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task HyperionUnreachable_StopsDecoding()
+    public async Task HyperionRejectsTheRegistration_IsRetriedToo()
     {
-        _connectFailure = new HyperionConnectionException("Could not connect to hyperion.local:19400: refused.");
+        _connectFailure = new HyperionProtocolException("Hyperion rejected the registration: instance disabled");
         var session = await StartStreamingAsync();
         Source.Push(2);
+        Source.End();
+        await TickAsync(session);
 
-        _time.Advance(Interval);
-        await session.Completion;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1));
 
-        Assert.True(Source.IsDisposed);
-        AssertLogged(LogLevel.Warning, "Could not connect to hyperion.local:19400");
+        Assert.Equal(2, _connects);
+        Assert.False(session.Completion.IsCompleted);
+        AssertLogged(LogLevel.Warning, "instance disabled");
     }
 
     /// <summary>Advances the clock by one frame interval per tick and waits until the session handled each tick.</summary>
@@ -518,10 +786,16 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     {
         for (var i = 0; i < count; i++)
         {
-            var before = session.Ticks;
-            _time.Advance(Interval);
-            await TestHelpers.WaitUntilAsync(() => session.Ticks > before);
+            await AdvanceAsync(session, Interval);
         }
+    }
+
+    /// <summary>Advances the clock in one step (a multiple of the frame interval) and waits for the tick it causes.</summary>
+    private async Task AdvanceAsync(StreamingGrabSession session, TimeSpan time)
+    {
+        var before = session.Ticks;
+        _time.Advance(time);
+        await TestHelpers.WaitUntilAsync(() => session.Ticks > before);
     }
 
     private PlaybackState State(TimeSpan position, bool paused = false) => new()
@@ -540,7 +814,9 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private StreamingGrabSession Start(PlaybackState state)
     {
         var host = new Host(this);
-        var factory = new StreamingGrabSessionFactory(
+
+        // One factory per test, like the plugin's, so consecutive sessions see each other.
+        _factory ??= new StreamingGrabSessionFactory(
             host,
             host,
             host,
@@ -555,6 +831,13 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
             (options, cancellationToken) =>
             {
                 Interlocked.Increment(ref _connects);
+                _connectTimes.Enqueue(_time.GetUtcNow());
+                _connectToken = cancellationToken;
+                if (_pendingConnect is { } pending)
+                {
+                    return pending.Task; // Completes when the test says so, whatever the token: a slow server.
+                }
+
                 if (_connection.IsDisposed)
                 {
                     _connection = new RecordingConnection();
@@ -565,7 +848,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
                     ? Task.FromResult<IHyperionConnection>(_connection)
                     : Task.FromException<IHyperionConnection>(_connectFailure);
             });
-        _session = Assert.IsType<StreamingGrabSession>(factory.Start(state));
+        _session = Assert.IsType<StreamingGrabSession>(_factory.Start(state));
         return _session;
     }
 

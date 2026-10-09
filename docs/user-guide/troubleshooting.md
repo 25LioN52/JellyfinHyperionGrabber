@@ -49,12 +49,38 @@ When playback is recognized (`Lights follow playback on …`), the next lines in
 | `… is not a local file but a Http stream` | `.strm` file or another remote source | Not supported: only files Jellyfin reads from disk can be decoded a second time. |
 | `… folders and disc images are not supported yet` | DVD/Blu-ray folder or ISO | Remux to MKV, or wait for disc support. |
 | `… no video stream with a known size` | Jellyfin has not analyzed the file | Rescan the library (**Dashboard → Libraries → Scan All Libraries**). |
-| `Streaming to Hyperion stopped … Could not connect` / `Lost the connection` | Hyperion was unreachable or restarted | Check Hyperion; the lights come back with the next playback. Reconnecting during playback is *(planned)*. |
+| `Hyperion is unreachable; reconnecting every 1-30 s …` | Hyperion restarted, or the network or Hyperion is down | Nothing, if Hyperion comes back: the plugin keeps retrying during playback; see [Hyperion restarted during playback](#hyperion-restarted-during-playback). Otherwise check Hyperion with **Test connection**. |
 | `Streaming to Hyperion stopped … FFmpeg exited with code …` | FFmpeg could not decode the file | The message includes FFmpeg's error. Hardware decoding problems fall back to the CPU by themselves (warning `Hardware decoding with … failed`). |
 
 When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` tells how it went. Many dropped frames
 mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
 hardware decoding for the video's codec in Jellyfin.
+
+## Hyperion restarted during playback
+
+When Hyperion restarts (a Docker container update, a NAS reboot, some settings changes) or the network drops, the
+lights go off and come back by themselves while the video keeps playing. The plugin tries to reconnect after 1 s,
+then after 2, 4, 8 and 16 s, and from then on every 30 s. Usually Hyperion is back within a few seconds; after a long
+outage the lights can take up to 30 s longer than Hyperion. They come back at the current picture, not the one from
+when the connection was lost. During the first minute the plugin keeps decoding, so a quick restart resumes at once;
+after that it stops decoding (no load on the server while Hyperion is off or misconfigured) and starts again from the
+current position as soon as Hyperion is back. Pausing longer than the pause release time stops the attempts until you
+resume.
+
+In **Dashboard → Logs** an outage looks like this:
+
+```text
+[WRN] Hyperion at 192.168.1.10:19400 closed the connection
+[WRN] Hyperion is unreachable; reconnecting every 1-30 s: The connection to Hyperion at 192.168.1.10:19400 is closed.
+[INF] Connected to Hyperion at 192.168.1.10:19400 with priority 150
+[INF] Reconnected to Hyperion after 3 attempt(s) and 7 s; streaming again
+```
+
+There is one warning per outage, not one per attempt. With [debug logging](#debug-logging), every failed attempt adds
+`Connecting to Hyperion failed (attempt N): …; next attempt in S s`. An outage longer than a minute adds
+`Hyperion has been unreachable for 60 s: stopped decoding until it is back` and, when it is,
+`Hyperion is back: decoding again from …`. If the lights do not come back although Hyperion
+runs again, check that its FlatBuffers server is enabled after the restart, and use **Test connection**.
 
 ## The lights are late or early
 

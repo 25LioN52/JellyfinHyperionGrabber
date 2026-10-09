@@ -46,7 +46,7 @@ public sealed partial class HyperionClient : IHyperionConnection
     private CancellationTokenSource _writeTimeout = new(); // reused for every write; guarded by _writeLock
     private volatile bool _closed;
     private volatile string? _lastServerError;
-    private bool _registered;
+    private volatile bool _registered;
     private int _disposed;
 
     private HyperionClient(HyperionClientOptions options, ILogger logger, TcpClient tcpClient)
@@ -360,7 +360,9 @@ public sealed partial class HyperionClient : IHyperionConnection
         catch (EndOfStreamException ex)
         {
             failure = ex;
-            if (!_closed)
+
+            // Only once registered: before that ConnectAsync throws, and its caller reports the failure.
+            if (!_closed && _registered)
             {
                 Log.ServerClosed(_logger, _options.Host, _options.Port);
             }
@@ -368,7 +370,7 @@ public sealed partial class HyperionClient : IHyperionConnection
         catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or InvalidOperationException or HyperionProtocolException)
         {
             failure = ex;
-            if (!_closed)
+            if (!_closed && _registered)
             {
                 Log.ConnectionLost(_logger, _options.Host, _options.Port, ex.Message);
             }

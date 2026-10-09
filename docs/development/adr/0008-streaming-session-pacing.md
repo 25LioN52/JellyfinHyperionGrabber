@@ -45,7 +45,8 @@ connection, so Hyperion shows its default; resuming starts FFmpeg at the positio
 Holding the frame forever kept the LEDs on a still picture during long pauses, which users did not want (found in the
 first real test).
 
-A failure (Hyperion unreachable or lost, FFmpeg error) ends the stream; disposing FFmpeg and the Hyperion connection
+A failure (Hyperion unreachable or lost, FFmpeg error) ends the stream (since 0.5 Hyperion failures are retried
+instead, [ADR 0010](0010-reconnect-with-backoff.md)); disposing FFmpeg and the Hyperion connection
 (which clears the priority) runs in parallel. `DisposeAsync` waits at most **5 s** and otherwise lets the release
 finish in the background, so the playback monitor never stalls ([`IGrabSession`](../architecture.md#playback-monitor-m1)).
 
@@ -60,6 +61,6 @@ finish in the background, so the playback monitor never stalls ([`IGrabSession`]
 - While paused, FFmpeg is blocked on the full pool and Hyperion gets two small frames per second (about 85 KB/s).
 - Seeks are detected from reports, so their accuracy depends on the client's reports. A global light timing offset
   cancels the constant delay (about 1 s in the first real test with Kodi and WLED); a per-device offset and a precise
-  Kodi clock remain M2 work. Reconnecting after a lost connection is a separate feature (roadmap M1).
+  Kodi clock remain M2 work. Reconnecting after a lost connection came in 0.5 ([ADR 0010](0010-reconnect-with-backoff.md)).
 - Tests drive the loop with `FakeTimeProvider`, a fake frame source and a recording connection, plus an end-to-end
   test with real FFmpeg and `FakeHyperionServer`.

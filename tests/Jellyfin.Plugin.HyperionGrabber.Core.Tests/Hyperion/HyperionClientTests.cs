@@ -1,11 +1,16 @@
 using System;
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Xunit;
 
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests.Hyperion;
@@ -58,6 +63,33 @@ public class HyperionClientTests
             () => HyperionClient.ConnectAsync(new HyperionClientOptions { Host = "127.0.0.1", Port = port }, NullLogger.Instance, Ct));
 
         Assert.Contains(port.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WhenServerClosesBeforeConfirming_ThrowsWithoutLoggingAWarning()
+    {
+        // Docker's port proxy accepts connections while the Hyperion container restarts, then closes them. A caller
+        // that retries reports the failure once; the client must not add a warning per attempt.
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var server = Task.Run(
+            async () =>
+            {
+                using var socket = await listener.AcceptTcpClientAsync(Ct);
+                var stream = socket.GetStream();
+                var header = new byte[4];
+                await stream.ReadExactlyAsync(header, Ct);
+                await stream.ReadExactlyAsync(new byte[BinaryPrimitives.ReadUInt32BigEndian(header)], Ct); // The Register.
+            },
+            Ct);
+        var logger = new FakeLogger();
+        var options = new HyperionClientOptions { Host = "127.0.0.1", Port = ((IPEndPoint)listener.LocalEndpoint).Port };
+
+        var exception = await Assert.ThrowsAsync<HyperionConnectionException>(() => HyperionClient.ConnectAsync(options, logger, Ct));
+
+        await server;
+        Assert.Contains("closed before Hyperion confirmed the registration", exception.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(logger.Collector.GetSnapshot(), r => r.Level >= LogLevel.Warning);
     }
 
     [Fact]
