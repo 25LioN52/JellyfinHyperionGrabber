@@ -46,8 +46,11 @@ Each zip contains only `Jellyfin.Plugin.HyperionGrabber.dll`, `Jellyfin.Plugin.H
 `https://25lion52.github.io/JellyfinHyperionGrabber/manifest.json` is generated, never committed. To rebuild it
 (for example after deleting a broken release), run the *Docs & plugin repository* workflow manually.
 
-## Known limitation
+## Required checks on the release PR
 
-Pull requests created by release-please with the default `GITHUB_TOKEN` do not trigger other workflows, so CI does
-not run on the release PR itself. That is acceptable because it only changes `CHANGELOG.md`, `version.txt` and the
-release manifest, and the `publish` job runs the full test suite before packaging.
+The release PR is opened and updated by the Release workflow with its own `GITHUB_TOKEN`. GitHub still runs `pull_request`
+workflows for it (CI, CodeQL and the PR title check), but not `pull_request_target` ones, which is why the PR title check
+uses `pull_request`. Merge the release PR like any other once its checks are green; no bypass is needed.
+
+If a required check stays at *Expected — Waiting for status to be reported* (for example after GitHub changes this
+behaviour), close and reopen the release PR: a reopen by a person starts every PR workflow.

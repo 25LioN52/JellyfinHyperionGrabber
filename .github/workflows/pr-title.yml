@@ -1,9 +1,12 @@
 name: PR title
 
 # PRs are squash-merged, so the PR title becomes the commit on main that release-please reads.
+# `pull_request`, not `pull_request_target`: GitHub does not start `pull_request_target` for the release PR, which the
+# Release workflow opens with its own token, so the required check never reported there. Reading the title needs no
+# write access, so the read-only token of fork PRs is enough.
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, synchronize, reopened]
 
 permissions:

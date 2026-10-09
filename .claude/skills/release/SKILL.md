@@ -32,3 +32,8 @@ Read `docs/development/releasing.md` first. Releases are never created by hand.
 - *Release created but no zips*: re-run the `publish` job of the Release workflow; `--clobber` makes it idempotent.
 - *Manifest missing a version*: run the "Docs & plugin repository" workflow manually (workflow_dispatch).
 - *Pages deploy fails*: Settings → Pages → Source must be "GitHub Actions".
+- *Release PR blocked, a required check "Expected — Waiting for status to be reported"*: the workflow behind it did
+  not start for the bot's PR (`pull_request_target` never does; see `docs/development/releasing.md`). Close and reopen
+  the release PR to start every PR workflow, then merge normally. Do not use the bypass.
+- *Release jobs cancelled with "The job was not acquired by Runner"*: a GitHub Actions outage; re-run the failed jobs
+  once githubstatus.com is green (the maintainer does this).
