@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.6.0...v0.7.0) (2026-10-11)
+
+
+### Features
+
+* read the playback position from Kodi over JSON-RPC (precise timing) ([#33](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/33)) ([ed7c059](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/ed7c059e0c91190533c5c10490d2bce0263792a2))
+
 ## [0.6.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.5.0...v0.6.0) (2026-10-11)
 
 
