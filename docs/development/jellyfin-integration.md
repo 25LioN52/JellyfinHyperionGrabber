@@ -62,8 +62,10 @@ carries the session (device, client, user), the item, `PlaybackPositionTicks`, `
     (`PlaybackState.IsStart` marks start reports). The session therefore keeps the range the position can be in and
     narrows it with every report (`PositionTracker`, [ADR 0009](adr/0009-position-tracking.md)); a report that moves
     the estimate by more than 1 s is a seek.
-- Kodi exposes its exact playback time and events over JSON-RPC (TCP 9090 or HTTP). An optional Kodi clock source is
-  planned for precise sync on Kodi clients (M2).
+- Kodi exposes its exact playback time and events over JSON-RPC. For Kodi clients the session reads it over raw TCP
+  (port 9090) at `SessionInfo.RemoteEndPoint`, mapped to `PlaybackEvent.RemoteAddress`
+  ([ADR 0011](adr/0011-kodi-clock.md)). Behind a reverse proxy Jellyfin sees the proxy, not Kodi, unless Jellyfin's
+  known proxies are set; the readings then never agree with the reports and are ignored.
 - Event handlers run on Jellyfin's threads: post the change to the session and return immediately.
 
 How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/PlaybackEventMapper.cs`):

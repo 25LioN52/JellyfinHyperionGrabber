@@ -31,6 +31,7 @@ public class PlaybackEventMapperTests
         Assert.Equal("kodi-device", playbackEvent.DeviceId);
         Assert.Equal("Living room", playbackEvent.DeviceName);
         Assert.Equal("Kodi", playbackEvent.Client);
+        Assert.Equal("192.168.1.50", playbackEvent.RemoteAddress);
         Assert.Equal(UserId, playbackEvent.UserId);
         Assert.Equal(ItemId, playbackEvent.ItemId);
         Assert.Equal("source", playbackEvent.MediaSourceId);
@@ -85,6 +86,7 @@ public class PlaybackEventMapperTests
         DeviceId = deviceId,
         DeviceName = "Living room",
         Client = "Kodi",
+        RemoteEndPoint = "192.168.1.50",
         UserId = UserId,
     };
 }

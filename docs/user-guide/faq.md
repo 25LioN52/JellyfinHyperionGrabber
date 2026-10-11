@@ -39,4 +39,5 @@ on resume. When playback stops, the priority is released at once.
 Yes: set **Light timing offset (ms)** on the plugin page. See [Lights are late or early](troubleshooting.md#the-lights-are-late-or-early).
 
 **Is anything sent to the internet?**
-No. The plugin only connects to the Hyperion server you configure.
+No. The plugin connects to the Hyperion server you configure and, for playback in Kodi, to that Kodi device on
+your network to read the playback position ([Kodi's clock](configuration.md#kodis-clock), can be turned off).

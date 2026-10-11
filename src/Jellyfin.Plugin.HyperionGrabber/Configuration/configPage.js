@@ -10,6 +10,7 @@ const HyperionGrabberConfig = {
     maxLatencyOffsetMilliseconds: 2000,
     defaultPauseReleaseSeconds: 15,
     maxPauseReleaseSeconds: 3600,
+    defaultKodiPort: 9090,
     statusRefreshMilliseconds: 2000
 };
 
@@ -30,6 +31,14 @@ function validateTiming(offset, pauseRelease) {
 
     if (!Number.isInteger(pauseRelease) || pauseRelease < 0 || pauseRelease > HyperionGrabberConfig.maxPauseReleaseSeconds) {
         return `Release after pause must be between 0 and ${HyperionGrabberConfig.maxPauseReleaseSeconds} seconds.`;
+    }
+
+    return null;
+}
+
+function validateKodiPort(port) {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return 'Kodi remote control port must be between 1 and 65535.';
     }
 
     return null;
@@ -221,6 +230,10 @@ function describeStatus(status) {
         lines.push(`Position: ${formatPosition(status.PositionSeconds)} (±${status.PositionUncertaintySeconds.toFixed(1)} s)`);
     }
 
+    if (status.Timing) {
+        lines.push(`Timing: ${status.Timing}`);
+    }
+
     if (typeof status.FramesPerSecond === 'number') {
         lines.push(`Pictures: ${status.FramesPerSecond.toFixed(1)} of ${status.TargetFramesPerSecond} per second; `
             + `${status.FramesSent} sent, ${status.FramesDropped} dropped, ${status.DecoderRestarts} decoder restarts`);
@@ -318,6 +331,8 @@ export default function (view) {
             view.querySelector('#FramesPerSecond').value = config.FramesPerSecond || HyperionGrabberConfig.defaultFramesPerSecond;
             view.querySelector('#LatencyOffsetMilliseconds').value = savedOrDefault(config.LatencyOffsetMilliseconds, 0);
             view.querySelector('#PauseReleaseSeconds').value = savedOrDefault(config.PauseReleaseSeconds, HyperionGrabberConfig.defaultPauseReleaseSeconds);
+            view.querySelector('#KodiClockEnabled').checked = config.KodiClockEnabled !== false;
+            view.querySelector('#KodiJsonRpcPort').value = savedOrDefault(config.KodiJsonRpcPort, HyperionGrabberConfig.defaultKodiPort);
             return loadClients(view, config.PlaybackDevices || [], config.PlaybackUsers || []);
         }).then(function () {
             Dashboard.hideLoadingMsg();
@@ -354,7 +369,9 @@ export default function (view) {
         const users = readChoices(view.querySelector('#PlaybackUserList'));
         const latencyOffset = readInteger(view, '#LatencyOffsetMilliseconds');
         const pauseRelease = readInteger(view, '#PauseReleaseSeconds');
-        const fpsProblem = validateFramesPerSecond(framesPerSecond) || validateTiming(latencyOffset, pauseRelease);
+        const kodiClock = view.querySelector('#KodiClockEnabled').checked;
+        const kodiPort = readInteger(view, '#KodiJsonRpcPort');
+        const fpsProblem = validateFramesPerSecond(framesPerSecond) || validateTiming(latencyOffset, pauseRelease) || validateKodiPort(kodiPort);
         if (fpsProblem) {
             showPlaybackResult(view, '✖ ' + fpsProblem);
             return false;
@@ -375,6 +392,8 @@ export default function (view) {
             config.FramesPerSecond = framesPerSecond;
             config.LatencyOffsetMilliseconds = latencyOffset;
             config.PauseReleaseSeconds = pauseRelease;
+            config.KodiClockEnabled = kodiClock;
+            config.KodiJsonRpcPort = kodiPort;
             config.PlaybackDevices = devices;
             config.PlaybackUsers = users;
             return ApiClient.updatePluginConfiguration(HyperionGrabberConfig.pluginUniqueId, config);

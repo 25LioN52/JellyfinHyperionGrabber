@@ -69,6 +69,17 @@ public class StatusResponseTests
         Assert.Equal((10, 7000L, 12L, 2L), (response.TargetFramesPerSecond!.Value, response.FramesSent!.Value, response.FramesDropped!.Value, response.DecoderRestarts!.Value));
         Assert.Equal("CPU", response.Decoder);
         Assert.True(response.HardwareFallback);
+        Assert.Equal("The client's reports to Jellyfin.", response.Timing);
+    }
+
+    [Fact]
+    public void From_WithAPlayerClock_NamesIt()
+    {
+        var session = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, TimingSource = "Kodi's clock at 192.168.1.50:9090." };
+
+        var response = StatusResponse.From(Playing(session), "x");
+
+        Assert.Equal("Kodi's clock at 192.168.1.50:9090.", response.Timing);
     }
 
     [Fact]

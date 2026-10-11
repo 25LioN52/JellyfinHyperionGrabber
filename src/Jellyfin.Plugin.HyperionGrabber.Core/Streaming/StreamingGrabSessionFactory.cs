@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
+using Jellyfin.Plugin.HyperionGrabber.Core.Kodi;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Microsoft.Extensions.Logging;
 
@@ -53,6 +54,7 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
     /// <param name="loggerFactory">Logger factory.</param>
     /// <param name="startFrameSource">Starts decoding with validated options.</param>
     /// <param name="connect">Connects and registers with Hyperion.</param>
+    /// <param name="startClock">Starts reading the position from a Kodi client; <see langword="null"/> for <see cref="KodiClock"/>.</param>
     internal StreamingGrabSessionFactory(
         IVideoInputResolver resolver,
         IFfmpegSettingsProvider ffmpegSettings,
@@ -60,7 +62,8 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
         TimeProvider timeProvider,
         ILoggerFactory loggerFactory,
         Func<FfmpegFrameSourceOptions, IFrameSource> startFrameSource,
-        Func<HyperionClientOptions, CancellationToken, Task<IHyperionConnection>> connect)
+        Func<HyperionClientOptions, CancellationToken, Task<IHyperionConnection>> connect,
+        Func<KodiClockOptions, IPlaybackClock>? startClock = null)
     {
         ArgumentNullException.ThrowIfNull(resolver);
         ArgumentNullException.ThrowIfNull(ffmpegSettings);
@@ -75,6 +78,8 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
         TimeProvider = timeProvider;
         StartFrameSource = startFrameSource;
         Connect = connect;
+        var clockLogger = loggerFactory.CreateLogger<KodiClock>();
+        StartClock = startClock ?? (options => KodiClock.Start(options, timeProvider, clockLogger));
         SessionLogger = loggerFactory.CreateLogger<StreamingGrabSession>();
     }
 
@@ -89,6 +94,9 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
     internal Func<FfmpegFrameSourceOptions, IFrameSource> StartFrameSource { get; }
 
     internal Func<HyperionClientOptions, CancellationToken, Task<IHyperionConnection>> Connect { get; }
+
+    /// <summary>Gets what starts reading the position from a Kodi client (<see cref="KodiClock"/> unless a test replaces it).</summary>
+    internal Func<KodiClockOptions, IPlaybackClock> StartClock { get; }
 
     internal ILogger SessionLogger { get; }
 

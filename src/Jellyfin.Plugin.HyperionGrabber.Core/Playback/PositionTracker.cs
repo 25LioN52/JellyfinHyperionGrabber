@@ -105,6 +105,21 @@ internal sealed class PositionTracker
         return Estimate(at) - before;
     }
 
+    /// <summary>Takes a reading of the player's own clock into account: a precise report, ± its uncertainty.</summary>
+    /// <param name="reading">The reading.</param>
+    /// <returns>How far the reading moved the estimate; more than a second means a seek.</returns>
+    public TimeSpan Apply(ClockReading reading)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+        var at = reading.At > _at ? reading.At : _at;
+        var before = Estimate(at);
+        MoveTo(at);
+        var position = reading.IsPaused || at <= reading.At ? reading.Position : reading.Position + (at - reading.At);
+        Narrow((position - reading.Uncertainty, position + reading.Uncertainty));
+        _paused = reading.IsPaused;
+        return Estimate(at) - before;
+    }
+
     private static (TimeSpan Earliest, TimeSpan Latest) StartRange(TimeSpan position)
         => (position - StartUncertainty, position + StartUncertainty);
 

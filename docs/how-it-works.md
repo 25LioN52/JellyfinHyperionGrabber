@@ -46,7 +46,9 @@ Clients report start, pause, resume, seek and their position from time to time: 
 millisecond, the Jellyfin add-on for Kodi in whole seconds and otherwise only every few minutes. Between reports the
 plugin assumes normal playback speed. It also knows how precise each report is, so a rounded report narrows its
 estimate instead of resetting it: every pause, resume or report makes the timing more accurate. A report that differs
-by more than a second (a seek) makes it decode from the new position. If Hyperion or the network
+by more than a second (a seek) makes it decode from the new position. For Kodi the plugin can read the position
+from Kodi itself, to the millisecond and with pause, resume and seek as they happen
+([Kodi's clock](user-guide/configuration.md#kodis-clock)). If Hyperion or the network
 is slow, the plugin skips pictures rather than falling behind. The **light timing offset** corrects the constant
 delay of the client, Hyperion's smoothing, the network and the LEDs.
 
@@ -61,4 +63,5 @@ second on the network.
 
 ## Privacy
 
-Frames go only to the Hyperion server you configure, on your network. Nothing is sent to the internet.
+Frames go only to the Hyperion server you configure, on your network. For playback in Kodi the plugin also reads
+the playback position from that Kodi device (it can be turned off). Nothing is sent to the internet.

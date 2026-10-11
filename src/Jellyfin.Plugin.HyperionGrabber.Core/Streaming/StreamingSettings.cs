@@ -11,6 +11,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// </summary>
 public sealed record StreamingSettings
 {
+    /// <summary>Kodi's default JSON-RPC TCP port.</summary>
+    public const int DefaultKodiPort = 9090;
+
     /// <summary>Largest light timing offset in either direction.</summary>
     public static readonly TimeSpan MaxLatencyOffset = TimeSpan.FromSeconds(2);
 
@@ -34,6 +37,16 @@ public sealed record StreamingSettings
 
     /// <summary>Gets how long a pause may last before FFmpeg and Hyperion are released; zero keeps holding the frame.</summary>
     public TimeSpan PauseRelease { get; init; } = DefaultPauseRelease;
+
+    /// <summary>Gets a value indicating whether the position of Kodi clients is read from Kodi itself (JSON-RPC).</summary>
+    public bool KodiClock { get; init; } = true;
+
+    /// <summary>Gets Kodi's JSON-RPC TCP port.</summary>
+    public int KodiPort { get; init; } = DefaultKodiPort;
+
+    /// <summary>Gets a value indicating whether <see cref="KodiPort"/> is a port. An invalid one only keeps Kodi's clock
+    /// off (it is not in <see cref="GetValidationErrors"/>, which would stop the lights for every client).</summary>
+    public bool HasValidKodiPort => KodiPort is >= 1 and <= 65535;
 
     /// <summary>Returns human-readable problems with these settings; empty when they are valid.</summary>
     /// <returns>Validation errors.</returns>

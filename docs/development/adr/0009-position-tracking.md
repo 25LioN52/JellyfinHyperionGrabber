@@ -58,8 +58,8 @@ Each report is logged at Debug with how far it moved the estimate and the remain
   narrows it: in a test with four Kodi-like reports the error went from up to 0.95 s (re-anchoring) to 0.01 s. A
   truncated pause or resume report that agrees with a precise estimate leaves it untouched.
 - Right after the start the range is ± 1 s, and with Kodi it stays that wide until a pause, seek or periodic report
-  narrows it (at most about half a second off after the first). An optional Kodi clock (JSON-RPC) remains possible
-  for exact sync from the first second. A session that begins from a mid-playback Kodi report starts from the middle
+  narrows it (at most about half a second off after the first). Reading Kodi's own clock
+  ([ADR 0011](0011-kodi-clock.md)) gives exact sync from the first second when Kodi allows remote control. A session that begins from a mid-playback Kodi report starts from the middle
   of that report's second.
 - A precise client that happens to report an exact whole second gets a wider range than needed; the overlap with what
   is already known keeps the estimate, so this only costs precision right after a seek.

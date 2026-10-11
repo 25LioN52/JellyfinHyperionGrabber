@@ -16,7 +16,7 @@ flowchart TB
             Pattern[TestPattern / TestPatternPlayer]
             Monitor[PlaybackMonitor]
             Session["StreamingGrabSession: frame source -> pacing -> client"]
-            Sync["Per-device offset, Kodi clock (planned, M2)"]
+            Sync["PositionTracker + KodiClock (JSON-RPC)"]
             Frames["FfmpegFrameSource"]
             Client[HyperionClient]
             Codec[FlatBuffers codec]
@@ -31,6 +31,7 @@ flowchart TB
     Session --> Client
     Client --> Codec
     Client -- TCP 19400 --> H[(Hyperion.ng / HyperHDR)]
+    Sync -- "TCP 9090 (read only)" --> K[(Kodi client)]
 ```
 
 - **Core** contains everything that can be written and tested without Jellyfin: the protocol, the client, the test
@@ -59,6 +60,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 
 | Component | Responsibility |
 | --- | --- |
+| `KodiClock`, `KodiJsonRpcConnection`, `JsonObjectSplitter` | For Kodi clients: reads the position from Kodi over JSON-RPC (TCP 9090) every 2 s and on player notifications; readings go to the `PositionTracker` once they agree with the reports ([ADR 0011](adr/0011-kodi-clock.md)) |
 | `PositionTracker` | Estimates the playback position from reports of different precision: a range that every agreeing report narrows ([ADR 0009](adr/0009-position-tracking.md)) |
 | `PlaybackEvent`, `PlaybackState` | Host-independent playback report (start/progress/stop, session, device, user, item, media source, position, paused) and the state a session sees, time-stamped with `ReportedAt` |
 | `PlaybackFilter` | Enabled switch, selected device ids (none = nothing matches), selected user ids (none = every user) |
@@ -160,7 +162,7 @@ followed playback when a session starts or stops and keeps the last problem of a
 page polls `GET HyperionGrabber/Status` every 2 s while it is shown and the browser tab is visible, one request at a
 time, and stops when the page is left. All values are set as text (device and item names come from clients).
 
-Still planned: a per-device timing offset and a precise Kodi clock (M2),
+Still planned: a per-device timing offset (M2),
 HDR tone mapping and multiple targets (M3). See the [roadmap](../roadmap.md).
 
 ## Threading

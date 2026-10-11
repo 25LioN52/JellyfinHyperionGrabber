@@ -16,3 +16,4 @@ accidentally undo. Superseded records stay, marked *Superseded by ...*.
 | [0008](0008-streaming-session-pacing.md) | Pace frames with a frame-rate timer, send the newest due frame, drop late ones | Accepted |
 | [0009](0009-position-tracking.md) | Track the playback position as a range that every report narrows | Accepted |
 | [0010](0010-reconnect-with-backoff.md) | Reconnect to Hyperion with backoff from a connect task the ticks check; never stall pacing | Accepted |
+| [0011](0011-kodi-clock.md) | Read the playback position from Kodi over JSON-RPC | Accepted |

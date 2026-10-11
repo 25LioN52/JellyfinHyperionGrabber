@@ -22,6 +22,9 @@ public sealed record PlaybackEvent
     /// <summary>Gets the client application, for example "Kodi".</summary>
     public string Client { get; init; } = string.Empty;
 
+    /// <summary>Gets the client's network address as the media server sees it, if known.</summary>
+    public string? RemoteAddress { get; init; }
+
     /// <summary>Gets the id of the user who is playing, or <see cref="Guid.Empty"/> when unknown.</summary>
     public Guid UserId { get; init; }
 

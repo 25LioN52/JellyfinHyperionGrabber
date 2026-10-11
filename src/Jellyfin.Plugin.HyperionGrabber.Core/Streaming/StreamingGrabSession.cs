@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
+using Jellyfin.Plugin.HyperionGrabber.Core.Kodi;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Microsoft.Extensions.Logging;
 
@@ -37,6 +39,10 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// on and due frames are dropped, so the first frame after reconnecting is the one at the playback position. After
 /// <see cref="StopDecodingAfter"/> without Hyperion, FFmpeg is stopped and only the connect attempts go on; once one
 /// succeeds, decoding starts again at the playback position.</para>
+/// <para>For a Kodi client (and unless turned off) a <see cref="KodiClock"/> reads the position from Kodi itself.
+/// Its readings go to the position tracker as precise reports once one agrees with the client's reports (within
+/// <see cref="ClockAgreement"/> plus the tracker's uncertainty), so another Kodi at the same address, or another
+/// video, never moves the lights. Without readings the client's reports are used as before.</para>
 /// <para>A decoding error stops the stream and releases Hyperion's priority; the session then idles until it is
 /// disposed.</para>
 /// </remarks>
@@ -67,6 +73,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     /// short enough not to decode a whole movie for nothing when Hyperion is off or misconfigured.</summary>
     internal static readonly TimeSpan StopDecodingAfter = TimeSpan.FromMinutes(1);
 
+    /// <summary>How far a clock reading may be from the client's reports, beyond their uncertainty, to be trusted.</summary>
+    internal static readonly TimeSpan ClockAgreement = TimeSpan.FromSeconds(2);
+
     /// <summary>How often the frame rate, position and decoder shown on the status panel are updated.</summary>
     internal static readonly TimeSpan StatusInterval = TimeSpan.FromSeconds(1);
 
@@ -96,10 +105,15 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private int _targetFramesPerSecond;
     private int _decoder; // HardwareAcceleration + 1; 0 while no decoder runs.
     private int _requestedDecoder; // HardwareAcceleration + 1.
+    private IPlaybackClock? _clock;
+    private string? _clockNote; // Why the clock's readings are not used, when they disagree.
 
     // Owned by the run task.
     private DateTimeOffset _statusWindowStart;
     private long _statusWindowSent;
+    private ClockReading? _appliedReading;
+    private bool _clockAgrees;
+    private bool _clockDisagreementLogged;
     private PlaybackState _appliedState;
     private IHyperionConnection? _connection;
     private IFrameSource? _source;
@@ -191,6 +205,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             Decoder = decoder == 0 ? null : (HardwareAcceleration)(decoder - 1),
             IsHardwareFallback = decoder == (int)HardwareAcceleration.None + 1
                 && Volatile.Read(ref _requestedDecoder) > (int)HardwareAcceleration.None + 1,
+            TimingSource = Volatile.Read(ref _clock) is { } clock ? Volatile.Read(ref _clockNote) ?? clock.Description : null,
         };
     }
 
@@ -319,7 +334,20 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             return null;
         }
 
-        return new Plan(hyperion, frames, settings.LatencyOffset, settings.PauseRelease);
+        KodiClockOptions? clock = null;
+        if (settings.KodiClock && KodiClockOptions.IsKodi(state.Client) && KodiClockOptions.ParseAddress(state.RemoteAddress) is { } address)
+        {
+            if (settings.HasValidKodiPort)
+            {
+                clock = new KodiClockOptions(address, settings.KodiPort, state.ItemId);
+            }
+            else
+            {
+                Log.InvalidKodiPort(_logger, settings.KodiPort);
+            }
+        }
+
+        return new Plan(hyperion, frames, settings.LatencyOffset, settings.PauseRelease, clock);
     }
 
     private async Task StreamAsync(Plan plan, CancellationToken token)
@@ -340,6 +368,11 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         var position = TargetPosition(now);
         StartSource(options, position, now);
         Log.Streaming(_logger, options.OutputWidth, options.OutputHeight, options.FramesPerSecond, position);
+        if (plan.Clock is { } clockOptions)
+        {
+            Volatile.Write(ref _clock, _factory.StartClock(clockOptions));
+        }
+
         _streamingStarted.TrySetResult(true);
 
         // Per tick: no allocations of our own; the frame is copied into _lastFrame so its pooled buffer returns at once.
@@ -351,6 +384,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
                 PublishRates(now);
                 var state = Volatile.Read(ref _state);
                 var seek = ApplyReport(state);
+                seek |= ApplyClockReading();
                 if (await HandlePauseAsync(state, plan, now).ConfigureAwait(false))
                 {
                     continue;
@@ -748,6 +782,45 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         return moved.Duration() > SeekThreshold;
     }
 
+    /// <summary>Feeds a new reading of the player's clock to the position tracker, once one agreed with the reports.</summary>
+    /// <returns>Whether it moved the estimated position by more than <see cref="SeekThreshold"/>: a seek.</returns>
+    private bool ApplyClockReading()
+    {
+        if (Volatile.Read(ref _clock)?.Latest is not { } reading || ReferenceEquals(reading, _appliedReading))
+        {
+            return false;
+        }
+
+        _appliedReading = reading;
+        if (!_clockAgrees)
+        {
+            var reported = _tracker.Estimate(reading.At);
+            if ((reading.Position - reported).Duration() > _tracker.Uncertainty + ClockAgreement)
+            {
+                // Once per disagreement, not per reading: readings come every few seconds.
+                var note = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Kodi's clock shows {reading.Position:h\\:mm\\:ss} but the playback reports {reported:h\\:mm\\:ss} (another Kodi or another video?); using the reports.");
+                Volatile.Write(ref _clockNote, note);
+                if (!_clockDisagreementLogged)
+                {
+                    _clockDisagreementLogged = true;
+                    Log.ClockDisagrees(_logger, reading.Position, reported);
+                }
+
+                return false;
+            }
+
+            _clockAgrees = true;
+            Volatile.Write(ref _clockNote, null);
+            Log.ClockAgrees(_logger, reading.Position);
+        }
+
+        var moved = _tracker.Apply(reading);
+        Interlocked.Exchange(ref _uncertaintyTicks, _tracker.Uncertainty.Ticks);
+        return moved.Duration() > SeekThreshold;
+    }
+
     /// <summary>Takes the newest decoded frame at or before <paramref name="position"/>, dropping older ones.</summary>
     private VideoFrame? TakeDueFrame(TimeSpan position, TimeSpan interval)
     {
@@ -840,12 +913,14 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _source = null;
         var stopDecoding = source is null ? Task.CompletedTask : source.DisposeAsync().AsTask();
         var clear = connection is null ? Task.CompletedTask : connection.DisposeAsync().AsTask();
+        var clock = final ? Interlocked.Exchange(ref _clock, null) : null; // A pause keeps reading the position.
+        var stopClock = clock is null ? Task.CompletedTask : clock.DisposeAsync().AsTask();
         if (final)
         {
             _ = SignalHyperionReleasedAsync(Task.WhenAll(clear, abandoned));
         }
 
-        await Task.WhenAll(stopDecoding, clear).ConfigureAwait(false);
+        await Task.WhenAll(stopDecoding, clear, stopClock).ConfigureAwait(false);
     }
 
     private async Task SignalHyperionReleasedAsync(Task released)
@@ -854,7 +929,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _hyperionReleased.TrySetResult();
     }
 
-    private sealed record Plan(HyperionClientOptions Hyperion, FfmpegFrameSourceOptions Frames, TimeSpan LatencyOffset, TimeSpan PauseRelease);
+    private sealed record Plan(HyperionClientOptions Hyperion, FfmpegFrameSourceOptions Frames, TimeSpan LatencyOffset, TimeSpan PauseRelease, KodiClockOptions? Clock);
 
     private static partial class Log
     {
@@ -917,5 +992,14 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 20, Level = LogLevel.Information, Message = "Hyperion is back: decoding again from {Position}")]
         public static partial void DecodingResumed(ILogger logger, TimeSpan position);
+
+        [LoggerMessage(EventId = 21, Level = LogLevel.Information, Message = "Kodi's clock agrees with the playback at {Position}; the timing uses it from now on")]
+        public static partial void ClockAgrees(ILogger logger, TimeSpan position);
+
+        [LoggerMessage(EventId = 22, Level = LogLevel.Information, Message = "Kodi's clock shows {Kodi} but the playback reports {Reported}; the timing uses the reports until they agree")]
+        public static partial void ClockDisagrees(ILogger logger, TimeSpan kodi, TimeSpan reported);
+
+        [LoggerMessage(EventId = 23, Level = LogLevel.Warning, Message = "The Kodi remote control port {Port} is not between 1 and 65535; the timing uses the client's reports")]
+        public static partial void InvalidKodiPort(ILogger logger, int port);
     }
 }

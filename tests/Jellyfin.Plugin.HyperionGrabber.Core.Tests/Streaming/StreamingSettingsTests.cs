@@ -46,4 +46,27 @@ public class StreamingSettingsTests
 
         Assert.Equal(valid, errors.Count == 0);
     }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(9090, true)]
+    [InlineData(65535, true)]
+    [InlineData(65536, false)]
+    public void KodiPort_Range_OnlyDecidesAboutKodisClock(int port, bool valid)
+    {
+        var settings = new StreamingSettings { KodiPort = port };
+
+        Assert.Equal(valid, settings.HasValidKodiPort);
+        Assert.Empty(settings.GetValidationErrors()); // The lights still follow every client.
+    }
+
+    [Fact]
+    public void KodiClock_IsOnByDefault_OnPort9090()
+    {
+        var settings = new StreamingSettings();
+
+        Assert.True(settings.KodiClock);
+        Assert.Equal(9090, settings.KodiPort);
+    }
 }
