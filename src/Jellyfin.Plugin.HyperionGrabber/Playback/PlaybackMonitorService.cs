@@ -15,7 +15,7 @@ namespace Jellyfin.Plugin.HyperionGrabber.Playback;
 /// <remarks>
 /// Event handlers run on Jellyfin's threads; they only translate the event and queue it, never wait.
 /// </remarks>
-internal sealed partial class PlaybackMonitorService : IHostedService, IDisposable
+internal sealed partial class PlaybackMonitorService : IHostedService, IPlaybackStatusSource, IDisposable
 {
     private readonly ISessionManager _sessionManager;
     private readonly IPlaybackFilterSource _filterSource;
@@ -45,6 +45,9 @@ internal sealed partial class PlaybackMonitorService : IHostedService, IDisposab
 
     /// <summary>Gets the monitor fed by this service.</summary>
     internal PlaybackMonitor Monitor { get; }
+
+    /// <inheritdoc />
+    public PlaybackMonitorStatus GetStatus() => Monitor.GetStatus();
 
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)

@@ -4,7 +4,9 @@ using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
+using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -23,16 +25,40 @@ public class HyperionGrabberController : ControllerBase
 {
     private readonly HyperionConnectionTester _tester;
     private readonly ISessionManager _sessionManager;
+    private readonly IPlaybackStatusSource _status;
+    private readonly ILibraryManager _libraryManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="HyperionGrabberController"/> class.
     /// </summary>
     /// <param name="tester">Runs connection tests and test patterns.</param>
     /// <param name="sessionManager">Jellyfin's sessions, for the device and user lists.</param>
-    public HyperionGrabberController(HyperionConnectionTester tester, ISessionManager sessionManager)
+    /// <param name="status">What the lights are doing.</param>
+    /// <param name="libraryManager">Jellyfin's library, for the name of the playing item.</param>
+    public HyperionGrabberController(
+        HyperionConnectionTester tester,
+        ISessionManager sessionManager,
+        IPlaybackStatusSource status,
+        ILibraryManager libraryManager)
     {
         _tester = tester;
         _sessionManager = sessionManager;
+        _status = status;
+        _libraryManager = libraryManager;
+    }
+
+    /// <summary>
+    /// Describes what the lights are doing: the followed playback, the connection to Hyperion, the frame rate and
+    /// the last problem. The configuration page polls it while it is open.
+    /// </summary>
+    /// <returns>The status.</returns>
+    [HttpGet("Status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<StatusResponse> GetStatus()
+    {
+        var status = _status.GetStatus();
+        var itemName = status.Playback is { } playback ? _libraryManager.GetItemById(playback.ItemId)?.Name : null;
+        return Ok(StatusResponse.From(status, itemName));
     }
 
     /// <summary>

@@ -9,8 +9,9 @@ A Jellyfin server plugin that decodes the video a client is playing (a second, t
 the server, kept in sync with the client) and streams frames to **Hyperion.ng or HyperHDR** over their FlatBuffers
 TCP protocol (port 19400). Hyperion owns LED layout, calibration and devices (WLED, Philips Hue, ...).
 
-Status: **0.4 shipped** playback → LEDs: streaming, light timing offset, pause release and position tracking;
-reconnecting to Hyperion is on main (0.5). Next: the M1 status panel. See `docs/roadmap.md`.
+Status: **0.5 shipped** playback → LEDs: streaming, light timing offset, pause release, position tracking and
+reconnecting to Hyperion; the status panel is on main (0.6). Next: the M1 end-to-end test against a real Hyperion
+(#10), then M2/M3. See `docs/roadmap.md`.
 
 ## Commands
 

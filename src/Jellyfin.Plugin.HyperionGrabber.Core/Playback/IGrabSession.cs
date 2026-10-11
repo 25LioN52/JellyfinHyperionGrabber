@@ -19,4 +19,8 @@ public interface IGrabSession : IAsyncDisposable
     /// <summary>Reports a newer state of the same playback (position, pause, resume, seek).</summary>
     /// <param name="state">The new state; the item is the one the session was started for.</param>
     void Update(PlaybackState state);
+
+    /// <summary>Describes what the session is doing. Safe to call from any thread, also after disposal; returns at once.</summary>
+    /// <returns>A snapshot.</returns>
+    GrabSessionStatus GetStatus();
 }

@@ -67,6 +67,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     /// short enough not to decode a whole movie for nothing when Hyperion is off or misconfigured.</summary>
     internal static readonly TimeSpan StopDecodingAfter = TimeSpan.FromMinutes(1);
 
+    /// <summary>How often the frame rate, position and decoder shown on the status panel are updated.</summary>
+    internal static readonly TimeSpan StatusInterval = TimeSpan.FromSeconds(1);
+
     private readonly StreamingGrabSessionFactory _factory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
@@ -83,7 +86,20 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private long _ticks;
     private int _disposed;
 
+    // Published by the run task for GetStatus, which runs on any thread.
+    private int _phase; // GrabSessionPhase
+    private string? _problem;
+    private ProblemReport? _lastProblem;
+    private long _positionTicks;
+    private long _uncertaintyTicks;
+    private long _milliFramesPerSecond;
+    private int _targetFramesPerSecond;
+    private int _decoder; // HardwareAcceleration + 1; 0 while no decoder runs.
+    private int _requestedDecoder; // HardwareAcceleration + 1.
+
     // Owned by the run task.
+    private DateTimeOffset _statusWindowStart;
+    private long _statusWindowSent;
     private PlaybackState _appliedState;
     private IHyperionConnection? _connection;
     private IFrameSource? _source;
@@ -119,6 +135,8 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _state = state;
         _appliedState = state;
         _tracker = new PositionTracker(state);
+        _positionTicks = Math.Max(state.Position.Ticks, 0);
+        _uncertaintyTicks = _tracker.Uncertainty.Ticks;
     }
 
     /// <summary>Gets a task that completes with <see langword="true"/> once frames are being paced, or with
@@ -152,6 +170,28 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         {
             Log.PauseChanged(_logger, state.IsPaused, state.Position);
         }
+    }
+
+    /// <inheritdoc />
+    public GrabSessionStatus GetStatus()
+    {
+        var decoder = Volatile.Read(ref _decoder);
+        return new GrabSessionStatus
+        {
+            Phase = (GrabSessionPhase)Volatile.Read(ref _phase),
+            Problem = Volatile.Read(ref _problem),
+            LastProblem = Volatile.Read(ref _lastProblem),
+            Position = TimeSpan.FromTicks(Interlocked.Read(ref _positionTicks)),
+            PositionUncertainty = TimeSpan.FromTicks(Interlocked.Read(ref _uncertaintyTicks)),
+            FramesPerSecond = Interlocked.Read(ref _milliFramesPerSecond) / 1000.0,
+            TargetFramesPerSecond = Volatile.Read(ref _targetFramesPerSecond),
+            FramesSent = FramesSent,
+            FramesDropped = FramesDropped,
+            DecoderRestarts = Restarts,
+            Decoder = decoder == 0 ? null : (HardwareAcceleration)(decoder - 1),
+            IsHardwareFallback = decoder == (int)HardwareAcceleration.None + 1
+                && Volatile.Read(ref _requestedDecoder) > (int)HardwareAcceleration.None + 1,
+        };
     }
 
     /// <summary>
@@ -219,10 +259,12 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         catch (FrameSourceException ex)
         {
             Log.StreamFailed(_logger, ex.Message);
+            SetStopped(ex.Message);
         }
         catch (Exception ex)
         {
             Log.Unexpected(_logger, ex);
+            SetStopped("Streaming failed unexpectedly: " + ex.Message);
         }
         finally
         {
@@ -243,13 +285,16 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         if (settings.Hyperion is not { } hyperion)
         {
             Log.NotConfigured(_logger);
+            SetStopped("No Hyperion server is configured.");
             return null;
         }
 
         IReadOnlyList<string> errors = [.. hyperion.GetValidationErrors(), .. settings.GetValidationErrors()];
         if (errors.Count > 0)
         {
-            Log.InvalidSettings(_logger, string.Join(" ", errors));
+            var problems = string.Join(" ", errors);
+            Log.InvalidSettings(_logger, problems);
+            SetStopped(problems);
             return null;
         }
 
@@ -257,6 +302,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         if (!video.IsSupported)
         {
             Log.Unsupported(_logger, state.ItemId, video.Reason);
+            SetStopped("This video is not supported: " + video.Reason);
             return null;
         }
 
@@ -267,7 +313,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         errors = frames.GetValidationErrors();
         if (errors.Count > 0)
         {
-            Log.InvalidSettings(_logger, string.Join(" ", errors));
+            var problems = string.Join(" ", errors);
+            Log.InvalidSettings(_logger, problems);
+            SetStopped(problems);
             return null;
         }
 
@@ -282,9 +330,12 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _lastFrame = new byte[options.FrameLength];
         _hasLastFrame = false;
         _lastSentAt = DateTimeOffset.MinValue;
+        Volatile.Write(ref _targetFramesPerSecond, options.FramesPerSecond);
+        Volatile.Write(ref _requestedDecoder, (int)options.HardwareAcceleration + 1);
 
         using var timer = new PeriodicTimer(interval, _timeProvider);
         var now = _timeProvider.GetUtcNow();
+        _statusWindowStart = now;
         ApplyReport(Volatile.Read(ref _state));
         var position = TargetPosition(now);
         StartSource(options, position, now);
@@ -297,6 +348,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             try
             {
                 now = _timeProvider.GetUtcNow();
+                PublishRates(now);
                 var state = Volatile.Read(ref _state);
                 var seek = ApplyReport(state);
                 if (await HandlePauseAsync(state, plan, now).ConfigureAwait(false))
@@ -401,15 +453,62 @@ internal sealed partial class StreamingGrabSession : IGrabSession
                 {
                     var downtime = Math.Round((now - since).TotalSeconds, 1); // Once per outage.
                     Log.Reconnected(_logger, _connectAttempts, downtime);
+                    Volatile.Write(ref _problem, null);
                 }
 
                 ResetReconnect();
             }
             finally
             {
+                PublishPhase();
                 Interlocked.Increment(ref _ticks);
             }
         }
+    }
+
+    /// <summary>Publishes what the session is doing; cheap enough for every tick (no allocations).</summary>
+    private void PublishPhase()
+    {
+        var phase = _releasedForPause ? GrabSessionPhase.PausedReleased
+            : _decodingStopped ? GrabSessionPhase.WaitingForHyperion
+            : _disconnectedSince is not null ? GrabSessionPhase.Reconnecting
+            : _appliedState.IsPaused ? GrabSessionPhase.Paused
+            : _connection is not null ? GrabSessionPhase.Streaming
+            : GrabSessionPhase.Starting;
+        Volatile.Write(ref _phase, (int)phase);
+    }
+
+    /// <summary>Publishes the frame rate, the position and the decoder in use, once per <see cref="StatusInterval"/>.</summary>
+    private void PublishRates(DateTimeOffset now)
+    {
+        var elapsed = now - _statusWindowStart;
+        if (elapsed < StatusInterval)
+        {
+            return;
+        }
+
+        var sent = FramesSent;
+        Interlocked.Exchange(ref _milliFramesPerSecond, (long)Math.Round((sent - _statusWindowSent) * 1000.0 / elapsed.TotalSeconds));
+        Interlocked.Exchange(ref _positionTicks, Math.Max(_tracker.Estimate(now).Ticks, 0));
+        PublishDecoder();
+        _statusWindowStart = now;
+        _statusWindowSent = sent;
+    }
+
+    private void PublishDecoder() => Volatile.Write(ref _decoder, _source is { } source ? (int)source.ActiveAcceleration + 1 : 0);
+
+    /// <summary>Records what keeps the lights from following playback, also as the session's last problem.</summary>
+    private void SetProblem(string message)
+    {
+        Volatile.Write(ref _problem, message);
+        Volatile.Write(ref _lastProblem, new ProblemReport(_timeProvider.GetUtcNow(), message));
+    }
+
+    /// <summary>Records why the lights do not follow this playback; the session idles until it is disposed.</summary>
+    private void SetStopped(string problem)
+    {
+        SetProblem(problem);
+        Volatile.Write(ref _phase, (int)GrabSessionPhase.Stopped);
     }
 
     /// <summary>
@@ -494,6 +593,8 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             _disconnectedSince = now;
             Log.Reconnecting(_logger, failure.Message);
         }
+
+        SetProblem("Hyperion is unreachable: " + failure.Message);
 
         var delay = MaxRetryDelay;
         if (_failures <= 5)
@@ -642,6 +743,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         _appliedState = state;
         var moved = _tracker.Apply(state);
+        Interlocked.Exchange(ref _uncertaintyTicks, _tracker.Uncertainty.Ticks);
         Log.Report(_logger, state.Position, state.IsPositionReported, state.IsPaused, moved, _tracker.Uncertainty);
         return moved.Duration() > SeekThreshold;
     }
@@ -717,6 +819,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         _sourceStartedAt = now;
         _sourceHasFrames = false;
         _sourceEnded = false;
+        PublishDecoder();
     }
 
     /// <summary>

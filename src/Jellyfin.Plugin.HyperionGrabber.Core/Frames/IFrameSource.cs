@@ -12,6 +12,9 @@ internal interface IFrameSource : IAsyncDisposable
     /// <summary>Gets a task that completes after the last frame was read, or faults with <see cref="FrameSourceException"/>.</summary>
     Task Completion { get; }
 
+    /// <summary>Gets the decoder in use; <see cref="HardwareAcceleration.None"/> after a fallback to the CPU. Thread-safe.</summary>
+    HardwareAcceleration ActiveAcceleration { get; }
+
     /// <summary>Returns the next frame if one is ready, without waiting.</summary>
     /// <param name="frame">The frame; dispose it when done.</param>
     /// <returns>Whether a frame was ready.</returns>

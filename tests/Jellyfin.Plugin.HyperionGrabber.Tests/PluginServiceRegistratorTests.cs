@@ -28,7 +28,8 @@ public class PluginServiceRegistratorTests
     {
         using var provider = BuildProvider();
 
-        Assert.Single(provider.GetServices<IHostedService>().OfType<PlaybackMonitorService>());
+        var monitor = Assert.Single(provider.GetServices<IHostedService>().OfType<PlaybackMonitorService>());
+        Assert.Same(monitor, provider.GetRequiredService<IPlaybackStatusSource>()); // The status shows the running monitor.
         Assert.IsType<StreamingGrabSessionFactory>(provider.GetRequiredService<IGrabSessionFactory>());
         Assert.IsType<JellyfinFfmpegSettingsProvider>(provider.GetRequiredService<IFfmpegSettingsProvider>());
         Assert.IsType<JellyfinVideoInputResolver>(provider.GetRequiredService<IVideoInputResolver>());

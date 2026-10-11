@@ -6,7 +6,7 @@
   -->
   <PropertyGroup>
     <VersionPrefix>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.txt').Trim())</VersionPrefix>
-    <Authors>Mike Zazharskyi (25LioN52) and contributors</Authors>
+    <Authors>Mike Zazharskyi and contributors</Authors>
     <Product>Hyperion Grabber for Jellyfin</Product>
     <Copyright>Copyright (c) Mike Zazharskyi and JellyfinHyperionGrabber contributors</Copyright>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
