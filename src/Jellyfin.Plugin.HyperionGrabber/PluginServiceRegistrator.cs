@@ -27,6 +27,10 @@ public class PluginServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IStreamingSettingsProvider, PluginStreamingSettingsProvider>();
         serviceCollection.TryAddSingleton<IGrabSessionFactory, StreamingGrabSessionFactory>();
         serviceCollection.AddSingleton<IPlaybackFilterSource, PluginPlaybackFilterSource>();
-        serviceCollection.AddHostedService<PlaybackMonitorService>();
+
+        // One monitor service: Jellyfin starts and stops it, the status endpoint reads it.
+        serviceCollection.AddSingleton<PlaybackMonitorService>();
+        serviceCollection.AddHostedService(provider => provider.GetRequiredService<PlaybackMonitorService>());
+        serviceCollection.AddSingleton<IPlaybackStatusSource>(provider => provider.GetRequiredService<PlaybackMonitorService>());
     }
 }

@@ -50,7 +50,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `IHyperionSink` | Abstraction of "where frames go"; `HyperionClient` implements it, tests use `RecordingSink` |
 | `TestPattern`, `TestPatternPlayer` | Layout test picture and its paced playback, always clearing afterwards |
 | `HyperionConnectionTester` | Config-page actions; returns results instead of throwing |
-| `HyperionGrabberController` | Admin-only `POST HyperionGrabber/TestConnection` and `/TestPattern`, `GET HyperionGrabber/Clients` (devices and users of recent sessions for the config page) |
+| `HyperionGrabberController` | Admin-only `POST HyperionGrabber/TestConnection` and `/TestPattern`, `GET HyperionGrabber/Clients` (devices and users of recent sessions for the config page) and `GET HyperionGrabber/Status` (the status panel, `StatusResponse`) |
 | `FfmpegFrameSource` (M1) | Runs FFmpeg from a start position and yields pooled RGB24 `VideoFrame`s at a constant rate; hardware decoding with CPU fallback; always kills and awaits the process ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) |
 | `FfmpegFrameSourceOptions`, `FfmpegArguments` | Output size from the aspect ratio, validation, and the FFmpeg command line per hardware acceleration method |
 | `IFfmpegSettingsProvider` / `JellyfinFfmpegSettingsProvider` | Core interface for the server's FFmpeg path and hardware settings; the adapter reads Jellyfin's encoding options |
@@ -63,7 +63,8 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `PlaybackEvent`, `PlaybackState` | Host-independent playback report (start/progress/stop, session, device, user, item, media source, position, paused) and the state a session sees, time-stamped with `ReportedAt` |
 | `PlaybackFilter` | Enabled switch, selected device ids (none = nothing matches), selected user ids (none = every user) |
 | `PlaybackMonitor` | Non-blocking `Post`/`UpdateFilter` into a bounded queue (256, drop oldest); one processing task owns all state and decides which playback drives the target |
-| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state)`, `Update(state)`, `DisposeAsync()`; implemented by `StreamingGrabSessionFactory` |
+| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state)`, `Update(state)`, `GetStatus()`, `DisposeAsync()`; implemented by `StreamingGrabSessionFactory` |
+| `IPlaybackStatusSource`, `PlaybackMonitorStatus`, `GrabSessionStatus` | Snapshot for the status panel: filter, followed playback, the session's phase, frame rate, counters, decoder, current and last problem |
 | `PlaybackMonitorService` (plugin) | `IHostedService` that subscribes to `ISessionManager.PlaybackStart/Progress/Stopped`, maps them with `PlaybackEventMapper` and feeds the saved filter (`IPlaybackFilterSource`) |
 
 Rules the monitor implements:
@@ -152,7 +153,14 @@ Design rules for the pipeline:
 - **Process hygiene.** FFmpeg processes are always killed and awaited when a session ends, including on errors and
   server shutdown.
 
-Still planned: a status panel (M1), a per-device timing offset and a precise Kodi clock (M2),
+**Status.** The session publishes its phase on every tick (one integer write) and the frame rate, position and
+decoder once a second; problems are published when they happen. `GetStatus()` only reads these fields, so the status
+endpoint never waits for the session or the monitor's queue and costs nothing per frame. The monitor publishes the
+followed playback when a session starts or stops and keeps the last problem of a stopped session. The configuration
+page polls `GET HyperionGrabber/Status` every 2 s while it is shown and the browser tab is visible, one request at a
+time, and stops when the page is left. All values are set as text (device and item names come from clients).
+
+Still planned: a per-device timing offset and a precise Kodi clock (M2),
 HDR tone mapping and multiple targets (M3). See the [roadmap](../roadmap.md).
 
 ## Threading

@@ -9,7 +9,8 @@ const HyperionGrabberConfig = {
     maxFramesPerSecond: 60,
     maxLatencyOffsetMilliseconds: 2000,
     defaultPauseReleaseSeconds: 15,
-    maxPauseReleaseSeconds: 3600
+    maxPauseReleaseSeconds: 3600,
+    statusRefreshMilliseconds: 2000
 };
 
 function readInteger(view, id) {
@@ -201,8 +202,113 @@ async function loadClients(view, selectedDevices, selectedUsers) {
         'No users yet.');
 }
 
+function formatPosition(seconds) {
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const pad = value => String(value).padStart(2, '0');
+    return hours > 0 ? `${hours}:${pad(minutes)}:${pad(total % 60)}` : `${minutes}:${pad(total % 60)}`;
+}
+
+function describeStatus(status) {
+    const lines = [];
+    if (status.DeviceName) {
+        const client = status.Client ? ` (${status.Client})` : '';
+        lines.push(`Playing: ${status.ItemName || 'an item Jellyfin no longer lists'} on ${status.DeviceName}${client}`);
+    }
+
+    if (typeof status.PositionSeconds === 'number') {
+        lines.push(`Position: ${formatPosition(status.PositionSeconds)} (±${status.PositionUncertaintySeconds.toFixed(1)} s)`);
+    }
+
+    if (typeof status.FramesPerSecond === 'number') {
+        lines.push(`Pictures: ${status.FramesPerSecond.toFixed(1)} of ${status.TargetFramesPerSecond} per second; `
+            + `${status.FramesSent} sent, ${status.FramesDropped} dropped, ${status.DecoderRestarts} decoder restarts`);
+    }
+
+    if (status.Decoder) {
+        lines.push(`Decoder: ${status.Decoder}${status.HardwareFallback ? ' (hardware decoding failed, see the log)' : ''}`);
+    }
+
+    if (status.LastProblem) {
+        const time = status.LastProblemTime ? ` (${new Date(status.LastProblemTime).toLocaleString()})` : '';
+        lines.push(`Last problem${time}: ${status.LastProblem}`);
+    }
+
+    return lines;
+}
+
+// Device and item names come from Jellyfin clients, so status values are only ever set as text.
+function renderStatus(view, status) {
+    view.querySelector('#HyperionStatusSummary').textContent = status.Summary;
+    const problem = view.querySelector('#HyperionStatusProblem');
+    problem.textContent = status.Problem ? '✖ ' + status.Problem : '';
+    problem.hidden = !status.Problem;
+    view.querySelector('#HyperionStatusDetails').replaceChildren(...describeStatus(status).map(text => {
+        const item = document.createElement('li');
+        item.textContent = text;
+        return item;
+    }));
+}
+
+async function loadStatus(view) {
+    try {
+        renderStatus(view, await ApiClient.ajax({ type: 'GET', url: ApiClient.getUrl('HyperionGrabber/Status'), dataType: 'json' }));
+    } catch {
+        renderStatus(view, { Summary: 'Could not read the status from the Jellyfin server.' });
+    }
+}
+
+// Polls only while the page is shown and the browser tab is visible; one request at a time.
+function startStatusRefresh(view) {
+    stopStatusRefresh(view);
+    const refresh = { active: true, loading: false, timer: 0 };
+    const tick = async () => {
+        refresh.timer = 0;
+        if (!refresh.active || refresh.loading || document.hidden) {
+            return;
+        }
+
+        refresh.loading = true;
+        try {
+            await loadStatus(view);
+        } finally {
+            refresh.loading = false;
+        }
+
+        if (refresh.active && !document.hidden) {
+            refresh.timer = setTimeout(tick, HyperionGrabberConfig.statusRefreshMilliseconds);
+        }
+    };
+    refresh.onVisibilityChange = () => {
+        if (!document.hidden && !refresh.timer) {
+            tick();
+        }
+    };
+    document.addEventListener('visibilitychange', refresh.onVisibilityChange);
+    view.hyperionStatusRefresh = refresh;
+    tick();
+}
+
+function stopStatusRefresh(view) {
+    const refresh = view.hyperionStatusRefresh;
+    if (!refresh) {
+        return;
+    }
+
+    refresh.active = false;
+    clearTimeout(refresh.timer);
+    document.removeEventListener('visibilitychange', refresh.onVisibilityChange);
+    view.hyperionStatusRefresh = null;
+}
+
 export default function (view) {
+    view.addEventListener('viewhide', function () {
+        stopStatusRefresh(view);
+    });
+
     view.addEventListener('viewshow', function () {
+        startStatusRefresh(view);
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(HyperionGrabberConfig.pluginUniqueId).then(function (config) {
             view.querySelector('#HyperionHost').value = config.HyperionHost || '';

@@ -3,6 +3,21 @@
 Open **Dashboard → Plugins → Hyperion Grabber**. Settings are saved with **Save**; the **Test connection** and
 **Send test pattern** buttons use the values currently in the form, so you can try them before saving.
 
+## Status
+
+The **Status** section at the top of the page shows what the lights are doing, updated every few seconds while the
+page is open:
+
+| Line | Meaning |
+| --- | --- |
+| First line | What happens now: waiting for playback, starting, streaming, paused, the lights released after a long pause, reconnecting to Hyperion, or why the lights do not follow the current playback. If **Follow playback** is off or no device is selected, it says so. |
+| ✖ … | What keeps the lights from following playback right now, for example `Hyperion is unreachable: Could not connect …`. |
+| Playing | The video and the device that drive the lights. |
+| Position | Where the plugin thinks the playback is, and how far off that can be (±). With the Jellyfin add-on for Kodi the ± shrinks with every pause, resume and seek. |
+| Pictures | Pictures sent to Hyperion per second compared to the frame rate you set, how many were sent and dropped, and how often decoding restarted (seeks). Many drops or a rate well below the setting mean the server, the network or Hyperion cannot keep up. |
+| Decoder | The hardware decoder in use, or **CPU**. *Hardware decoding failed* means Jellyfin's hardware acceleration did not work for this video; see the log for FFmpeg's message. |
+| Last problem | The most recent problem with its time, also after it was resolved (for example a Hyperion restart during the last movie). |
+
 ## Hyperion server
 
 | Setting | Default | Description |

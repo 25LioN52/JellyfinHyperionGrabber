@@ -33,6 +33,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private RecordingConnection _connection = new();
     private StreamingSettings _settings = new() { Hyperion = new HyperionClientOptions { Host = "hyperion.local" }, FramesPerSecond = 10 };
     private VideoInputResult _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
+    private FfmpegSettings _ffmpeg = new() { FfmpegPath = "ffmpeg" };
     private Exception? _connectFailure;
     private TaskCompletionSource<IHyperionConnection>? _pendingConnect;
     private CancellationToken _connectToken;
@@ -388,6 +389,8 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.True(Source.IsDisposed);
         AssertLogged(LogLevel.Warning, "Invalid data found");
         AssertLogged(LogLevel.Information, "Stopped streaming to Hyperion");
+        Assert.Equal(GrabSessionPhase.Stopped, session.GetStatus().Phase);
+        Assert.Contains("Invalid data found", session.GetStatus().Problem, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -477,6 +480,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
 
         await TestHelpers.WaitUntilAsync(() => first.IsDisposed);
         AssertLogged(LogLevel.Information, "Hyperion has been unreachable for 60 s: stopped decoding");
+        await TestHelpers.WaitUntilAsync(() => session.GetStatus().Phase == GrabSessionPhase.WaitingForHyperion);
 
         await AdvanceAsync(session, TimeSpan.FromSeconds(2)); // 62.1 s: attempt 3 fails; no decoding.
         Assert.Equal(3, _connects);
@@ -763,6 +767,9 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.False(await session.StreamingStarted.WaitAsync(Ct));
         Assert.Equal(0, _connects);
         AssertLogged(LogLevel.Information, $"The lights do not follow item {Movie}: it is a live stream.");
+        var status = session.GetStatus();
+        Assert.Equal(GrabSessionPhase.Stopped, status.Phase);
+        Assert.Equal("This video is not supported: it is a live stream.", status.Problem);
     }
 
     [Fact]
@@ -779,6 +786,92 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.Equal(2, _connects);
         Assert.False(session.Completion.IsCompleted);
         AssertLogged(LogLevel.Warning, "instance disabled");
+    }
+
+    [Fact]
+    public async Task Status_BeforeTheFirstPicture_IsStarting()
+    {
+        var session = await StartStreamingAsync(TimeSpan.FromMinutes(5));
+        await TickAsync(session); // FFmpeg is still opening the file.
+
+        var status = session.GetStatus();
+
+        Assert.Equal(GrabSessionPhase.Starting, status.Phase);
+        Assert.Equal(10, status.TargetFramesPerSecond);
+        Assert.Equal(HardwareAcceleration.None, status.Decoder);
+        Assert.Equal(TimeSpan.FromMinutes(5), status.Position);
+        Assert.Null(status.Problem);
+    }
+
+    [Fact]
+    public async Task Status_WhileStreaming_ReportsTheFrameRateCountersAndPosition()
+    {
+        var session = await StartStreamingAsync();
+        Source.Push(30);
+
+        await TickAsync(session, 20); // 2 s; the rate is measured once a second.
+
+        var status = session.GetStatus();
+        Assert.Equal(GrabSessionPhase.Streaming, status.Phase);
+        Assert.Equal(10, status.FramesPerSecond); // Frames 10-19 in the second second.
+        Assert.Equal(20, status.FramesSent);
+        Assert.Equal(1, status.FramesDropped);
+        Assert.Equal(TimeSpan.FromSeconds(2), status.Position);
+        Assert.Equal(PositionTracker.StartUncertainty, status.PositionUncertainty);
+        Assert.Null(status.LastProblem);
+    }
+
+    [Fact]
+    public async Task Status_FollowsPauseAndThePauseRelease()
+    {
+        _settings = _settings with { PauseRelease = TimeSpan.FromSeconds(1) };
+        var session = await StartStreamingAsync();
+        Source.Push(10);
+        await TickAsync(session);
+
+        session.Update(State(TimeSpan.FromMilliseconds(100), paused: true));
+        await TickAsync(session);
+        Assert.Equal(GrabSessionPhase.Paused, session.GetStatus().Phase);
+        Assert.Equal(PositionTracker.ReportTolerance, session.GetStatus().PositionUncertainty);
+
+        await TickAsync(session, 11);
+        Assert.Equal(GrabSessionPhase.PausedReleased, session.GetStatus().Phase);
+    }
+
+    [Fact]
+    public async Task Status_WhileHyperionIsUnreachable_ShowsTheProblem_AndKeepsItAsTheLastProblemAfterReconnecting()
+    {
+        _connectFailure = new HyperionConnectionException("Could not connect to hyperion.local:19400: refused.");
+        var session = await StartStreamingAsync();
+        Source.Push(30);
+        await TickAsync(session); // 0.1 s: the first attempt fails.
+
+        var unreachable = session.GetStatus();
+        Assert.Equal(GrabSessionPhase.Reconnecting, unreachable.Phase);
+        Assert.Equal("Hyperion is unreachable: Could not connect to hyperion.local:19400: refused.", unreachable.Problem);
+
+        _connectFailure = null;
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1)); // 1.1 s: reconnected.
+
+        var reconnected = session.GetStatus();
+        Assert.Equal(GrabSessionPhase.Streaming, reconnected.Phase);
+        Assert.Null(reconnected.Problem);
+        Assert.Equal(unreachable.Problem, reconnected.LastProblem?.Message);
+        Assert.Equal(_time.GetUtcNow() - TimeSpan.FromSeconds(1), reconnected.LastProblem?.Time);
+    }
+
+    [Fact]
+    public async Task Status_HardwareDecodingFailed_IsReportedAsFallback()
+    {
+        _ffmpeg = _ffmpeg with { HardwareAcceleration = HardwareAcceleration.Qsv, HardwareDecodingCodecs = ["h264"] };
+        var session = await StartStreamingAsync();
+        Source.ActiveAcceleration = HardwareAcceleration.None; // FFmpeg fell back to the CPU.
+
+        await AdvanceAsync(session, TimeSpan.FromSeconds(1));
+
+        var status = session.GetStatus();
+        Assert.Equal(HardwareAcceleration.None, status.Decoder);
+        Assert.True(status.IsHardwareFallback);
     }
 
     /// <summary>Advances the clock by one frame interval per tick and waits until the session handled each tick.</summary>
@@ -866,7 +959,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     {
         public VideoInputResult Resolve(Guid itemId, string? mediaSourceId) => test._video;
 
-        public FfmpegSettings GetSettings() => new() { FfmpegPath = "ffmpeg" };
+        public FfmpegSettings GetSettings() => test._ffmpeg;
 
         StreamingSettings IStreamingSettingsProvider.GetSettings() => test._settings;
     }

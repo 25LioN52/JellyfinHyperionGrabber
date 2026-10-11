@@ -21,8 +21,10 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 /// <para>A progress report for a session the monitor has not seen start (for example after a server restart or when a
 /// device is added to the filter mid-playback) counts as a start; a report with a different item restarts the
 /// session.</para>
+/// <para><see cref="GetStatus"/> reads what the processing task published (the followed playback and the last
+/// problem) plus the session's own status, so it never waits for the queue.</para>
 /// </remarks>
-public sealed partial class PlaybackMonitor : IAsyncDisposable
+public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusSource
 {
     /// <summary>Maximum number of queued reports; clients report a few times per minute, so this is never reached in practice.</summary>
     internal const int QueueCapacity = 256;
@@ -42,6 +44,8 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
     private long _sequence;
 
     private PlaybackFilter _filter = PlaybackFilter.Disabled;
+    private PublishedPlayback? _published; // Written by the processing task, read by GetStatus.
+    private ProblemReport? _lastProblem; // From sessions that stopped, or a session that could not start.
     private Task _processing = Task.CompletedTask;
     private int _started;
     private long _processedReports;
@@ -116,6 +120,26 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public PlaybackMonitorStatus GetStatus()
+    {
+        var filter = Filter;
+        var published = Volatile.Read(ref _published);
+        var session = published?.Session.GetStatus();
+        var playback = published is null || session is null
+            ? null
+            : new FollowedPlayback(published.DeviceName, published.Client, published.ItemId, published.Since, session);
+        return new PlaybackMonitorStatus(
+            filter.Enabled,
+            filter.DeviceIds.Count,
+            filter.UserIds.Count,
+            playback,
+            Latest(session?.LastProblem, Volatile.Read(ref _lastProblem)));
+    }
+
+    private static ProblemReport? Latest(ProblemReport? first, ProblemReport? second)
+        => first is null ? second : second is null || first.Time >= second.Time ? first : second;
 
     private async Task ProcessAsync()
     {
@@ -244,12 +268,15 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
         var state = playback.State;
         try
         {
-            _active = new ActiveSession(state.SessionId, playback.Sequence, _factory.Start(state));
+            var session = _factory.Start(state);
+            _active = new ActiveSession(state.SessionId, playback.Sequence, session);
+            Volatile.Write(ref _published, new PublishedPlayback(state.DeviceName, state.Client, state.ItemId, _timeProvider.GetUtcNow(), session));
             Log.SessionStarted(_logger, state.DeviceName, state.Client);
         }
         catch (Exception ex)
         {
             Log.SessionStartFailed(_logger, state.DeviceName, ex);
+            Volatile.Write(ref _lastProblem, new ProblemReport(_timeProvider.GetUtcNow(), $"Could not start the lights for playback on {state.DeviceName}: {ex.Message}"));
         }
     }
 
@@ -275,10 +302,14 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
         }
 
         _active = null;
+        Volatile.Write(ref _published, null);
         try
         {
             await active.Session.DisposeAsync().ConfigureAwait(false);
             Log.SessionStopped(_logger, active.SessionId);
+
+            // Keep the stopped session's last problem for the status panel.
+            Volatile.Write(ref _lastProblem, Latest(active.Session.GetStatus().LastProblem, Volatile.Read(ref _lastProblem)));
         }
         catch (Exception ex)
         {
@@ -291,6 +322,8 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable
     private sealed record TrackedPlayback(PlaybackState State, long Sequence);
 
     private sealed record ActiveSession(string SessionId, long Sequence, IGrabSession Session);
+
+    private sealed record PublishedPlayback(string DeviceName, string Client, Guid ItemId, DateTimeOffset Since, IGrabSession Session);
 
     private static partial class Log
     {

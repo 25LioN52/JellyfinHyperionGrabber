@@ -7,8 +7,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Api;
 using Jellyfin.Plugin.HyperionGrabber.Core.Diagnostics;
+using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
+using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,12 +24,20 @@ namespace Jellyfin.Plugin.HyperionGrabber.Tests.Api;
 
 public class HyperionGrabberControllerTests
 {
+    private static readonly Guid ItemId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
     private readonly ISessionManager _sessionManager = Substitute.For<ISessionManager>();
+    private readonly ILibraryManager _libraryManager = Substitute.For<ILibraryManager>();
+    private readonly FakeStatusSource _status = new();
     private readonly HyperionGrabberController _controller;
 
     public HyperionGrabberControllerTests()
     {
-        _controller = new(new HyperionConnectionTester(NullLogger<HyperionClient>.Instance, TimeProvider.System), _sessionManager);
+        _controller = new(
+            new HyperionConnectionTester(NullLogger<HyperionClient>.Instance, TimeProvider.System),
+            _sessionManager,
+            _status,
+            _libraryManager);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -128,6 +140,40 @@ public class HyperionGrabberControllerTests
         Assert.Equal([new PlaybackClientUser(alice, "alice"), new PlaybackClientUser(bob, "bob")], response.Users);
     }
 
+    [Fact]
+    public void GetStatus_WhilePlaying_NamesTheItemAndDescribesTheSession()
+    {
+        _libraryManager.GetItemById(ItemId).Returns(new Movie { Id = ItemId, Name = "Big Buck Bunny" });
+        var session = new GrabSessionStatus
+        {
+            Phase = GrabSessionPhase.Streaming,
+            FramesPerSecond = 24.96,
+            TargetFramesPerSecond = 25,
+            Decoder = HardwareAcceleration.Qsv,
+        };
+        var since = new DateTimeOffset(2026, 10, 11, 20, 0, 0, TimeSpan.Zero);
+        _status.Status = new PlaybackMonitorStatus(true, 1, 0, new FollowedPlayback("Living room", "Kodi", ItemId, since, session), null);
+
+        var response = Assert.IsType<StatusResponse>(Assert.IsType<OkObjectResult>(_controller.GetStatus().Result).Value);
+
+        Assert.Equal("Streaming", response.State);
+        Assert.Equal("Streaming Big Buck Bunny from Living room to Hyperion.", response.Summary);
+        Assert.Equal("Big Buck Bunny", response.ItemName);
+        Assert.Equal(25.0, response.FramesPerSecond);
+        Assert.Equal("Intel Quick Sync", response.Decoder);
+    }
+
+    [Fact]
+    public void GetStatus_WithoutPlayback_DoesNotLookUpAnItem()
+    {
+        _status.Status = new PlaybackMonitorStatus(true, 1, 0, null, null);
+
+        var response = Assert.IsType<StatusResponse>(Assert.IsType<OkObjectResult>(_controller.GetStatus().Result).Value);
+
+        Assert.Equal("Waiting", response.State);
+        _libraryManager.DidNotReceiveWithAnyArgs().GetItemById(Guid.Empty);
+    }
+
     private static SessionInfo Session(string deviceId, string? deviceName, string? client, Guid userId, string? userName, DateTime lastActivity)
         => new(Substitute.For<ISessionManager>(), NullLogger.Instance)
         {
@@ -153,5 +199,12 @@ public class HyperionGrabberControllerTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private sealed class FakeStatusSource : IPlaybackStatusSource
+    {
+        public PlaybackMonitorStatus Status { get; set; } = new(false, 0, 0, null, null);
+
+        public PlaybackMonitorStatus GetStatus() => Status;
     }
 }

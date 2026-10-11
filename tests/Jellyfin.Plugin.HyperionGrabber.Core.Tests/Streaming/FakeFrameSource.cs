@@ -20,8 +20,13 @@ internal sealed class FakeFrameSource : IFrameSource
     private int _created;
     private int _pushed;
     private int _disposed;
+    private int _activeAcceleration;
 
-    public FakeFrameSource(FfmpegFrameSourceOptions options) => Options = options;
+    public FakeFrameSource(FfmpegFrameSourceOptions options)
+    {
+        Options = options;
+        _activeAcceleration = (int)options.HardwareAcceleration;
+    }
 
     public FfmpegFrameSourceOptions Options { get; }
 
@@ -31,6 +36,13 @@ internal sealed class FakeFrameSource : IFrameSource
     public Task DisposeGate { get; set; } = Task.CompletedTask;
 
     public Task Completion => _completion.Task;
+
+    /// <summary>Gets or sets the decoder in use; starts as the requested one.</summary>
+    public HardwareAcceleration ActiveAcceleration
+    {
+        get => (HardwareAcceleration)Volatile.Read(ref _activeAcceleration);
+        set => Volatile.Write(ref _activeAcceleration, (int)value);
+    }
 
     /// <summary>Gets the number of frames pushed and not yet returned to the pool.</summary>
     public int Outstanding => Volatile.Read(ref _created) - _pool.Reader.Count;

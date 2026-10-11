@@ -1,7 +1,8 @@
 # Troubleshooting
 
-Start with **Test connection** on the plugin page: its message usually names the problem. Then check Jellyfin's log
-(**Dashboard → Logs**) for lines containing `HyperionGrabber`.
+Start with the **Status** section and **Test connection** on the plugin page: they usually name the problem (see
+[Status](configuration.md#status)). Then check Jellyfin's log (**Dashboard → Logs**) for lines containing
+`HyperionGrabber`.
 
 ## Connection test fails
 

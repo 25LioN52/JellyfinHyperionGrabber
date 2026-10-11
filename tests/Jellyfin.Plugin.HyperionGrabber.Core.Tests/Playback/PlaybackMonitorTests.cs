@@ -124,6 +124,59 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task GetStatus_WithoutPlayback_ReportsTheFilter()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi", "shield"], [Alice]));
+
+        var status = _monitor.GetStatus();
+
+        Assert.Equal(new PlaybackMonitorStatus(true, 2, 1, null, null), status);
+    }
+
+    [Fact]
+    public async Task GetStatus_WhilePlaying_ReportsThePlaybackAndItsSession()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        var session = Assert.Single(_factory.Sessions);
+        session.Status = new GrabSessionStatus { Phase = GrabSessionPhase.Paused, FramesSent = 42 };
+
+        var playback = _monitor.GetStatus().Playback;
+
+        Assert.NotNull(playback);
+        Assert.Equal(("KODI", "Kodi", Movie, _time.GetUtcNow()), (playback.DeviceName, playback.Client, playback.ItemId, playback.Since));
+        Assert.Same(session.Status, playback.Session);
+    }
+
+    [Fact]
+    public async Task GetStatus_AfterTheSessionStopped_KeepsItsLastProblem()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        var problem = new ProblemReport(_time.GetUtcNow(), "Hyperion is unreachable: refused.");
+        _factory.Sessions[0].Status = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, LastProblem = problem };
+
+        await PostAsync(Event(PlaybackEventKind.Stopped, "s1", "kodi"));
+
+        var status = _monitor.GetStatus();
+        Assert.Null(status.Playback);
+        Assert.Same(problem, status.LastProblem);
+    }
+
+    [Fact]
+    public async Task GetStatus_WhenASessionCannotStart_SaysWhy()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        _factory.FailStart = true;
+
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+
+        var problem = _monitor.GetStatus().LastProblem;
+        Assert.Equal("Could not start the lights for playback on KODI: Simulated session failure.", problem?.Message);
+        Assert.Equal(_time.GetUtcNow(), problem?.Time);
+    }
+
+    [Fact]
     public async Task Stopped_DisposesTheSession()
     {
         await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
