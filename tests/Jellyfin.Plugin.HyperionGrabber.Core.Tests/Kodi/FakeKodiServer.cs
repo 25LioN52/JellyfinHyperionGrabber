@@ -127,6 +127,7 @@ internal sealed class FakeKodiServer : IAsyncDisposable
 
     private async Task ServeAsync(TcpClient client)
     {
+        using var _ = client;
         var splitter = new JsonObjectSplitter(1 << 16);
         try
         {
@@ -155,10 +156,6 @@ internal sealed class FakeKodiServer : IAsyncDisposable
         catch (Exception ex) when (ex is OperationCanceledException or System.IO.IOException or SocketException or ObjectDisposedException)
         {
             // The client or the test closed the connection.
-        }
-        finally
-        {
-            client.Dispose();
         }
     }
 
