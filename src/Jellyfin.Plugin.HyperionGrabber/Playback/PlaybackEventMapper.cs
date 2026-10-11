@@ -41,6 +41,7 @@ internal static class PlaybackEventMapper
             DeviceId = deviceId,
             DeviceName = session.DeviceName ?? args.DeviceName ?? deviceId,
             Client = session.Client ?? args.ClientName ?? string.Empty,
+            RemoteAddress = session.RemoteEndPoint,
             UserId = session.UserId,
             ItemId = args.Item?.Id ?? Guid.Empty,
             MediaSourceId = args.MediaSourceId,

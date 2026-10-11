@@ -23,6 +23,8 @@ public class PluginConfigurationTests
         Assert.Equal(25, configuration.FramesPerSecond);
         Assert.Equal(0, configuration.LatencyOffsetMilliseconds);
         Assert.Equal(15, configuration.PauseReleaseSeconds);
+        Assert.True(configuration.KodiClockEnabled);
+        Assert.Equal(9090, configuration.KodiJsonRpcPort);
         Assert.False(configuration.PlaybackEnabled);
         Assert.Empty(configuration.PlaybackDevices);
         Assert.Empty(configuration.PlaybackUsers);
@@ -41,6 +43,8 @@ public class PluginConfigurationTests
             FramesPerSecond = 30,
             LatencyOffsetMilliseconds = -250,
             PauseReleaseSeconds = 0,
+            KodiClockEnabled = false,
+            KodiJsonRpcPort = 9091,
             PlaybackEnabled = true,
             PlaybackDevices = [new PlaybackDeviceSelection { Id = "kodi-device", Name = "Living room" }],
             PlaybackUsers = [new PlaybackUserSelection { Id = Alice, Name = "alice" }],
@@ -58,6 +62,8 @@ public class PluginConfigurationTests
         Assert.Equal(30, copy.FramesPerSecond);
         Assert.Equal(-250, copy.LatencyOffsetMilliseconds);
         Assert.Equal(0, copy.PauseReleaseSeconds);
+        Assert.False(copy.KodiClockEnabled);
+        Assert.Equal(9091, copy.KodiJsonRpcPort);
         Assert.True(copy.PlaybackEnabled);
         var device = Assert.Single(copy.PlaybackDevices);
         Assert.Equal(("kodi-device", "Living room"), (device.Id, device.Name));
@@ -81,6 +87,8 @@ public class PluginConfigurationTests
         Assert.Equal(25, configuration.FramesPerSecond);
         Assert.Equal(0, configuration.LatencyOffsetMilliseconds);
         Assert.Equal(15, configuration.PauseReleaseSeconds);
+        Assert.True(configuration.KodiClockEnabled); // Saved before 0.7: Kodi's clock is used.
+        Assert.Equal(9090, configuration.KodiJsonRpcPort);
         Assert.False(configuration.PlaybackEnabled);
         Assert.Empty(configuration.PlaybackDevices);
         Assert.Empty(configuration.PlaybackUsers);
@@ -108,6 +116,17 @@ public class PluginConfigurationTests
         Assert.Equal(TimeSpan.FromMilliseconds(800), settings.LatencyOffset);
         Assert.Equal(TimeSpan.FromSeconds(30), settings.PauseRelease);
         Assert.Empty(settings.GetValidationErrors());
+    }
+
+    [Fact]
+    public void ToStreamingSettings_UsesTheKodiSettings()
+    {
+        var configuration = new PluginConfiguration { HyperionHost = "hyperion.local", KodiClockEnabled = false, KodiJsonRpcPort = 9091 };
+
+        var settings = configuration.ToStreamingSettings();
+
+        Assert.False(settings.KodiClock);
+        Assert.Equal(9091, settings.KodiPort);
     }
 
     [Fact]

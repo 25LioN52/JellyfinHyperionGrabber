@@ -191,6 +191,40 @@ public class PositionTrackerTests
         AssertNear(9.625, tracker.Estimate(At(10)));
     }
 
+    [Fact]
+    public void ClockReading_NarrowsTheRangeToItsUncertainty()
+    {
+        var tracker = new PositionTracker(Start(0, at: 0));
+
+        var moved = tracker.Apply(new ClockReading(TimeSpan.FromSeconds(10.6), IsPaused: false, At(10), TimeSpan.FromMilliseconds(20)));
+
+        AssertNear(10.6, tracker.Estimate(At(10)));
+        AssertNear(0.6, moved);
+        AssertNear(0.02, tracker.Uncertainty);
+    }
+
+    [Fact]
+    public void ClockReading_AndAgreeingTruncatedReports_KeepThePreciseEstimate()
+    {
+        var tracker = new PositionTracker(Start(0, at: 0));
+        tracker.Apply(new ClockReading(TimeSpan.FromSeconds(10.6), IsPaused: false, At(10), TimeSpan.FromMilliseconds(20)));
+
+        tracker.Apply(Report(20, at: 20)); // Jellyfin for Kodi: 20.6 s truncated.
+
+        AssertNear(20.6, tracker.Estimate(At(20)));
+        Assert.InRange(tracker.Uncertainty, TimeSpan.Zero, TimeSpan.FromMilliseconds(40));
+    }
+
+    [Fact]
+    public void ClockReading_WhilePaused_StopsTheEstimate()
+    {
+        var tracker = new PositionTracker(Start(0, at: 0));
+
+        tracker.Apply(new ClockReading(TimeSpan.FromSeconds(42.25), IsPaused: true, At(45), TimeSpan.FromMilliseconds(20)));
+
+        AssertNear(42.25, tracker.Estimate(At(90)));
+    }
+
     private static DateTimeOffset At(double seconds) => T0 + TimeSpan.FromSeconds(seconds);
 
     private static PlaybackState Start(double position, double at, bool paused = false)

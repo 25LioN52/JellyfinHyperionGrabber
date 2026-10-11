@@ -85,4 +85,5 @@ the PR description says how it was verified (including manual tests against a re
   highest version whose `targetAbi` it supports (`docs/development/adr/0003-jellyfin-version-support.md`).
 - Jellyfin for Kodi reports the playback position in **whole seconds** (truncated), on pause/resume/seek and otherwise
   only about every 4 minutes; other clients report milliseconds every 3-10 s. `PositionTracker` keeps the range the
-  position can be in (`docs/development/adr/0009-position-tracking.md`, `docs/development/jellyfin-integration.md`).
+  position can be in (ADR 0009); for Kodi clients `KodiClock` reads Kodi's own position over JSON-RPC (TCP 9090,
+  ADR 0011, `docs/development/jellyfin-integration.md`).

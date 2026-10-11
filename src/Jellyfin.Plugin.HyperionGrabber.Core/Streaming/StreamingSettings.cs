@@ -11,6 +11,9 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 /// </summary>
 public sealed record StreamingSettings
 {
+    /// <summary>Kodi's default JSON-RPC TCP port.</summary>
+    public const int DefaultKodiPort = 9090;
+
     /// <summary>Largest light timing offset in either direction.</summary>
     public static readonly TimeSpan MaxLatencyOffset = TimeSpan.FromSeconds(2);
 
@@ -35,6 +38,12 @@ public sealed record StreamingSettings
     /// <summary>Gets how long a pause may last before FFmpeg and Hyperion are released; zero keeps holding the frame.</summary>
     public TimeSpan PauseRelease { get; init; } = DefaultPauseRelease;
 
+    /// <summary>Gets a value indicating whether the position of Kodi clients is read from Kodi itself (JSON-RPC).</summary>
+    public bool KodiClock { get; init; } = true;
+
+    /// <summary>Gets Kodi's JSON-RPC TCP port.</summary>
+    public int KodiPort { get; init; } = DefaultKodiPort;
+
     /// <summary>Returns human-readable problems with these settings; empty when they are valid.</summary>
     /// <returns>Validation errors.</returns>
     public IReadOnlyList<string> GetValidationErrors()
@@ -48,6 +57,11 @@ public sealed record StreamingSettings
         if (PauseRelease < TimeSpan.Zero || PauseRelease > MaxPauseRelease)
         {
             errors.Add(string.Create(CultureInfo.InvariantCulture, $"Release after pause must be between 0 and {MaxPauseRelease.TotalSeconds:0} seconds."));
+        }
+
+        if (KodiPort is < 1 or > 65535)
+        {
+            errors.Add("Kodi port must be between 1 and 65535.");
         }
 
         return errors;

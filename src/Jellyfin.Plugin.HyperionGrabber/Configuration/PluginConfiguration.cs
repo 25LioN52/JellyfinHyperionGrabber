@@ -40,6 +40,12 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets how many seconds a pause may last before the lights are released (0 = hold the frame).</summary>
     public int PauseReleaseSeconds { get; set; } = (int)StreamingSettings.DefaultPauseRelease.TotalSeconds;
 
+    /// <summary>Gets or sets a value indicating whether the position of Kodi clients is read from Kodi over JSON-RPC.</summary>
+    public bool KodiClockEnabled { get; set; } = true;
+
+    /// <summary>Gets or sets Kodi's JSON-RPC TCP port (1-65535).</summary>
+    public int KodiJsonRpcPort { get; set; } = StreamingSettings.DefaultKodiPort;
+
     /// <summary>Gets or sets a value indicating whether playback on the selected devices drives the lights.</summary>
     public bool PlaybackEnabled { get; set; }
 
@@ -61,6 +67,8 @@ public class PluginConfiguration : BasePluginConfiguration
         FramesPerSecond = FramesPerSecond,
         LatencyOffset = TimeSpan.FromMilliseconds(LatencyOffsetMilliseconds),
         PauseRelease = TimeSpan.FromSeconds(PauseReleaseSeconds),
+        KodiClock = KodiClockEnabled,
+        KodiPort = KodiJsonRpcPort,
     };
 
     /// <summary>Creates the playback filter described by these settings.</summary>

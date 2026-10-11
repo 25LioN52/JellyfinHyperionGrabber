@@ -43,4 +43,8 @@ public sealed record GrabSessionStatus
 
     /// <summary>Gets a value indicating whether hardware decoding failed and the video is decoded on the CPU.</summary>
     public bool IsHardwareFallback { get; init; }
+
+    /// <summary>Gets where the position comes from besides the client's reports (for example "Kodi's clock at ..."),
+    /// or why that is not used; <see langword="null"/> when the session only uses the client's reports.</summary>
+    public string? TimingSource { get; init; }
 }

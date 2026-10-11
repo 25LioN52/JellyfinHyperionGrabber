@@ -15,6 +15,7 @@ page is open:
 | Playing | The video and the device that drive the lights. |
 | Position | Where the plugin thinks the playback is, and how far off that can be (±). With the Jellyfin add-on for Kodi the ± shrinks with every pause, resume and seek. |
 | Pictures | Pictures sent to Hyperion per second compared to the frame rate you set, how many were sent and dropped, and how often decoding restarted (seeks). Many drops or a rate well below the setting mean the server, the network or Hyperion cannot keep up. |
+| Timing | Where the position comes from: **Kodi's clock** when the plugin reads it from Kodi, otherwise the client's reports to Jellyfin (with the reason if Kodi's clock cannot be used). |
 | Decoder | The hardware decoder in use, or **CPU**. *Hardware decoding failed* means Jellyfin's hardware acceleration did not work for this video; see the log for FFmpeg's message. |
 | Last problem | The most recent problem with its time, also after it was resolved (for example a Hyperion restart during the last movie). |
 
@@ -51,6 +52,19 @@ Seeking jumps with the video, and stopping releases the priority so Hyperion fal
 otherwise. Only videos from your libraries are streamed; see
 [what is not supported](troubleshooting.md#the-lights-do-not-follow-a-video).
 
+### Kodi's clock
+
+Jellyfin for Kodi tells Jellyfin the position only in whole seconds and, while playing, only every few minutes. For
+exact timing the plugin reads the position from Kodi itself over Kodi's remote control interface (JSON-RPC on TCP port
+9090), at the address Jellyfin sees for the Kodi device. In Kodi turn on:
+
+**Settings → Services → Control → Allow remote control from applications on other systems**
+
+The plugin only reads where the video is; it never controls Kodi. Kodi's remote control interface has no password,
+so with this setting on, any device on your network can control Kodi; that is how Kodi works. The **Timing** line of
+the [status](#status) shows whether Kodi's clock is used. Without the setting, or when Kodi cannot be reached (a
+firewall, or Jellyfin seeing a proxy instead of the Kodi device), the plugin uses Jellyfin's reports as before.
+
 If Hyperion restarts or the network drops during playback, the plugin reconnects by itself (after 1 s, then up to every
 30 s) and the lights continue at the current picture; see
 [Hyperion restarted during playback](troubleshooting.md#hyperion-restarted-during-playback).
@@ -59,6 +73,8 @@ If Hyperion restarts or the network drops during playback, the plugin reconnects
 | --- | --- | --- |
 | **Follow playback** | off | Turns playback detection on. |
 | **Frame rate** | `25` | Pictures per second sent to Hyperion, 1-60. 25 looks smooth; lower it (for example to 10-15) if the Jellyfin server is short on CPU, especially without hardware decoding. Applies from the next playback. |
+| **Read the position from Kodi (precise timing)** | on | For playback in Kodi, the plugin asks Kodi itself where the video is, to the millisecond, instead of relying on Jellyfin's whole-second reports. Needs **Settings → Services → Control → Allow remote control from applications on other systems** in Kodi; without it nothing changes. Other clients are not affected. See [Kodi's clock](#kodis-clock). |
+| **Kodi remote control port** | `9090` | Kodi's JSON-RPC TCP port. Applies from the next playback. |
 | **Light timing offset (ms)** | `0` | Shifts the lights against the picture, -2000 to 2000. If the lights change **after** the TV picture, increase it; if they change **before**, make it negative. See [Lights are late or early](troubleshooting.md#the-lights-are-late-or-early). Applies from the next playback. |
 | **Release the lights after pausing for (seconds)** | `15` | While paused the lights hold the picture; after this time FFmpeg stops and Hyperion shows its default (effect, other source or off) until you resume. `0` holds the picture for the whole pause. |
 | **Devices** | none | Devices whose playback drives the lights, usually the TV your LEDs are mounted on. With none selected, no playback does. |

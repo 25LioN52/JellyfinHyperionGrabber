@@ -60,6 +60,9 @@ public sealed record StatusResponse
     /// <summary>Gets a value indicating whether hardware decoding failed and the CPU decodes.</summary>
     public bool HardwareFallback { get; init; }
 
+    /// <summary>Gets where the position comes from, in words (Kodi's clock, or the client's reports and why).</summary>
+    public string? Timing { get; init; }
+
     /// <summary>Gets the most recent problem, also after it was resolved.</summary>
     public string? LastProblem { get; init; }
 
@@ -110,6 +113,7 @@ public sealed record StatusResponse
             DecoderRestarts = session.DecoderRestarts,
             Decoder = session.Decoder is { } decoder ? DescribeDecoder(decoder) : null,
             HardwareFallback = session.IsHardwareFallback,
+            Timing = session.TimingSource ?? "The client's reports to Jellyfin.",
         };
     }
 

@@ -101,8 +101,22 @@ faster.
 
 How precise the timing can be depends on the client ([Compatibility](../compatibility.md#jellyfin-clients)). Most apps
 report their position to the millisecond every few seconds. The Jellyfin add-on for Kodi reports whole seconds and,
-during playback, only every few minutes: right after starting a video the lights can be up to about a second off,
-and every pause, resume or seek makes them more precise. Tune the offset after pausing and resuming a few times.
+during playback, only every few minutes. With Kodi, turn on remote control so the plugin reads the position from Kodi
+itself ([Kodi's clock](configuration.md#kodis-clock)); then the offset you find stays right for every movie. Without
+it, right after starting a video the lights can be up to about a second off, every pause, resume or seek makes them
+more precise, and the best offset can differ slightly from movie to movie.
+
+### Kodi's clock is not used
+
+The **Timing** line of the [status](configuration.md#status) says why:
+
+| Timing line says | Fix |
+| --- | --- |
+| `Kodi at … is not reachable` | In Kodi turn on **Settings → Services → Control → Allow remote control from applications on other systems**. If it is on, check that the address is the Kodi device (not a reverse proxy or the Docker host) and that nothing blocks TCP port 9090. The plugin tries again every 30 s. |
+| `… waiting for its video player` | Kodi is connected but not playing a video yet; it switches to Kodi's clock with the first picture. |
+| `Kodi's clock shows … but the playback reports …` | Another Kodi answers at that address, or it plays something else. The plugin keeps using Jellyfin's reports. |
+| `Kodi at … plays another item` | The Kodi at that address plays a different Jellyfin item. |
+| `The client's reports to Jellyfin` | Not a Kodi client, or **Read the position from Kodi** is off. |
 
 To see what the plugin knows, turn on debug logging for it (below) and look for
 `Position report … moved the estimate by …; uncertainty ±…` lines: a large move means the client's report disagreed

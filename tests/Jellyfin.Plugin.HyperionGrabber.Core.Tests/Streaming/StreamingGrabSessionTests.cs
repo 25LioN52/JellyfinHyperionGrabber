@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
+using Jellyfin.Plugin.HyperionGrabber.Core.Kodi;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
@@ -30,6 +31,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private readonly FakeLoggerProvider _logs = new();
     private readonly LoggerFactory _loggerFactory;
     private readonly ConcurrentQueue<DateTimeOffset> _connectTimes = new();
+    private readonly FakeClock _clock = new();
     private RecordingConnection _connection = new();
     private StreamingSettings _settings = new() { Hyperion = new HyperionClientOptions { Host = "hyperion.local" }, FramesPerSecond = 10 };
     private VideoInputResult _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
@@ -38,6 +40,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private TaskCompletionSource<IHyperionConnection>? _pendingConnect;
     private CancellationToken _connectToken;
     private int _connects;
+    private KodiClockOptions? _clockOptions;
     private StreamingGrabSessionFactory? _factory;
     private StreamingGrabSession? _session;
 
@@ -874,6 +877,88 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.True(status.IsHardwareFallback);
     }
 
+    [Fact]
+    public async Task KodiClient_StartsTheClockAtItsAddressAndTheConfiguredPort()
+    {
+        _settings = _settings with { KodiPort = 9091 };
+
+        var session = Start(State(TimeSpan.Zero) with { IsStart = true, RemoteAddress = "::ffff:192.168.1.50" });
+
+        Assert.True(await session.StreamingStarted.WaitAsync(Ct));
+        Assert.Equal(new KodiClockOptions("192.168.1.50", 9091, Movie), _clockOptions);
+        Assert.Equal("Kodi's clock at 192.168.1.50:9090.", session.GetStatus().TimingSource);
+    }
+
+    [Theory]
+    [InlineData("Jellyfin Web", "192.168.1.60", true)]
+    [InlineData("Kodi", null, true)]
+    [InlineData("Kodi", "192.168.1.50", false)]
+    public async Task NoClock_ForOtherClients_WithoutAnAddress_OrWhenTurnedOff(string client, string? address, bool enabled)
+    {
+        _settings = _settings with { KodiClock = enabled };
+
+        var session = Start(State(TimeSpan.Zero) with { IsStart = true, Client = client, RemoteAddress = address });
+
+        Assert.True(await session.StreamingStarted.WaitAsync(Ct));
+        Assert.Null(_clockOptions);
+        Assert.Null(session.GetStatus().TimingSource);
+    }
+
+    [Fact]
+    public async Task ClockReadingThatAgrees_TimesTheLightsByKodi()
+    {
+        var session = await StartKodiAsync(TimeSpan.FromMinutes(10));
+        Source.Push(20); // Frames at 10:00.0, 10:00.1, ...
+        _clock.Latest = Reading(TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(600)); // Kodi is 0.6 s further.
+
+        await TickAsync(session);
+
+        Assert.Equal([7], _connection.Images); // 10:00.7 at 100 ms, not frame 1 as the reports alone would give.
+        Assert.Equal(0, session.Restarts);
+        Assert.Equal(TimeSpan.FromMilliseconds(20), session.GetStatus().PositionUncertainty);
+        AssertLogged(LogLevel.Information, "Kodi's clock agrees with the playback");
+    }
+
+    [Fact]
+    public async Task ClockReadingThatDisagrees_IsIgnoredAndShown()
+    {
+        var session = await StartKodiAsync(TimeSpan.FromMinutes(10));
+        Source.Push(20);
+        _clock.Latest = Reading(TimeSpan.FromMinutes(1)); // Another Kodi at the same address, or another video.
+
+        await TickAsync(session);
+
+        Assert.Equal([1], _connection.Images);
+        Assert.Equal(
+            "Kodi's clock shows 0:01:00 but the playback reports 0:10:00 (another Kodi or another video?); using the reports.",
+            session.GetStatus().TimingSource);
+        AssertLogged(LogLevel.Information, "Kodi's clock shows 00:01:00 but the playback reports 00:10:00");
+    }
+
+    [Fact]
+    public async Task ClockReadingAfterAgreeing_FollowsKodisSeek()
+    {
+        var session = await StartKodiAsync(TimeSpan.FromMinutes(10));
+        _clock.Latest = Reading(TimeSpan.FromMinutes(10) + TimeSpan.FromMilliseconds(100));
+        await TickAsync(session);
+
+        _clock.Latest = Reading(TimeSpan.FromMinutes(30)); // Seeked in Kodi; Jellyfin's report has not come yet.
+        await TickAsync(session);
+
+        Assert.Equal(1, session.Restarts);
+        Assert.Equal(TimeSpan.FromMinutes(30) + Interval, Source.Options.StartPosition);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_StopsTheClock()
+    {
+        var session = await StartKodiAsync(TimeSpan.Zero);
+
+        await session.DisposeAsync();
+
+        Assert.True(_clock.IsDisposed);
+    }
+
     /// <summary>Advances the clock by one frame interval per tick and waits until the session handled each tick.</summary>
     private async Task TickAsync(StreamingGrabSession session, int count = 1)
     {
@@ -940,10 +1025,26 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
                 return _connectFailure is null
                     ? Task.FromResult<IHyperionConnection>(_connection)
                     : Task.FromException<IHyperionConnection>(_connectFailure);
+            },
+            options =>
+            {
+                _clockOptions = options;
+                return _clock;
             });
         _session = Assert.IsType<StreamingGrabSession>(_factory.Start(state));
         return _session;
     }
+
+    /// <summary>Starts streaming a playback on Kodi at 192.168.1.50, which gets a (fake) Kodi clock.</summary>
+    private async Task<StreamingGrabSession> StartKodiAsync(TimeSpan position)
+    {
+        var session = Start(State(position) with { IsStart = true, RemoteAddress = "192.168.1.50" });
+        Assert.True(await session.StreamingStarted.WaitAsync(Ct));
+        return session;
+    }
+
+    private ClockReading Reading(TimeSpan position, bool paused = false)
+        => new(position, paused, _time.GetUtcNow(), TimeSpan.FromMilliseconds(20));
 
     private async Task<StreamingGrabSession> StartStreamingAsync(TimeSpan? position = null)
     {

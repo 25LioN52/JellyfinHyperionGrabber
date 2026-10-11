@@ -82,6 +82,20 @@
                         <div class="fieldDescription">While paused the lights hold the picture; after this time they go back to Hyperion's default (effect, other source or off) until you resume. 0 keeps holding the picture. Default 15.</div>
                     </div>
 
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label>
+                            <input is="emby-checkbox" type="checkbox" id="KodiClockEnabled" />
+                            <span>Read the position from Kodi (precise timing)</span>
+                        </label>
+                        <div class="fieldDescription checkboxFieldDescription">For playback in Kodi, the plugin asks Kodi itself where the video is, instead of relying on Jellyfin's whole-second reports. In Kodi, turn on <b>Settings → Services → Control → Allow remote control from applications on other systems</b>. The plugin only reads the position; other clients are not affected.</div>
+                    </div>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="KodiJsonRpcPort">Kodi remote control port</label>
+                        <input is="emby-input" type="number" id="KodiJsonRpcPort" name="KodiJsonRpcPort" required min="1" max="65535" />
+                        <div class="fieldDescription">Kodi's JSON-RPC TCP port, default 9090. Applies from the next playback.</div>
+                    </div>
+
                     <h4>Devices</h4>
                     <div id="PlaybackDeviceList" class="checkboxList"></div>
                     <div class="fieldDescription">Devices with a recent Jellyfin session, most recent first. If your TV is missing, start playing something on it and press <b>Refresh</b>.</div>
