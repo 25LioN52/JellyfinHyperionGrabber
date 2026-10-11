@@ -103,6 +103,7 @@ public class JsonObjectSplitterTests
         splitter.Advance(bytes.Length);
         while (splitter.TryRead(out _))
         {
+            continue;
         }
     }
 }
