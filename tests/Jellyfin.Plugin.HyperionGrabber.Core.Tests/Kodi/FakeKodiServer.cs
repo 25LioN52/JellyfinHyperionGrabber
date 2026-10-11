@@ -102,6 +102,7 @@ internal sealed class FakeKodiServer : IAsyncDisposable
         }
         catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
         {
+            System.Diagnostics.Debug.WriteLine($"Ignored expected exception during FakeKodiServer disposal: {ex}");
         }
 
         _stopping.Dispose();
