@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.5.0...v0.6.0) (2026-10-11)
+
+
+### Features
+
+* status panel on the configuration page ([#31](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/31)) ([d260360](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/d2603604b5204c497e6ab95076c0fa5f5a528551))
+
 ## [0.5.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.4.0...v0.5.0) (2026-10-09)
 
 
