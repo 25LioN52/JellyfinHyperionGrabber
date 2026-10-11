@@ -194,7 +194,13 @@ internal sealed partial class KodiClock : IPlaybackClock
         {
             // The session ended.
         }
-        catch (Exception ex)
+        catch (KodiException ex)
+        {
+            Volatile.Write(ref _latest, null);
+            SetDescription("Reading Kodi's clock failed unexpectedly; using Jellyfin's reports.");
+            Log.Unexpected(_logger, ex);
+        }
+        catch (JsonException ex)
         {
             Volatile.Write(ref _latest, null);
             SetDescription("Reading Kodi's clock failed unexpectedly; using Jellyfin's reports.");
