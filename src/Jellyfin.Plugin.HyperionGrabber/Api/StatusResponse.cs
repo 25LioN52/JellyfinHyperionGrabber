@@ -119,7 +119,7 @@ public sealed record StatusResponse
         GrabSessionPhase.Streaming => $"Streaming {video} from {device} to Hyperion.",
         GrabSessionPhase.Paused => $"Paused on {device}: the lights hold the last picture.",
         GrabSessionPhase.PausedReleased => $"Paused on {device}: the lights are back to Hyperion's default until you resume.",
-        GrabSessionPhase.Reconnecting => $"Hyperion is unreachable; reconnecting while {device} plays.",
+        GrabSessionPhase.Reconnecting => "Hyperion is unreachable; reconnecting.",
         GrabSessionPhase.WaitingForHyperion => "Hyperion has been unreachable for over a minute: decoding stopped, still trying to connect.",
         _ => $"The lights do not follow the playback on {device}.",
     };

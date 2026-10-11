@@ -488,7 +488,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         }
 
         var sent = FramesSent;
-        Interlocked.Exchange(ref _milliFramesPerSecond, (long)Math.Round((sent - _statusWindowSent) * 1000 / elapsed.TotalSeconds));
+        Interlocked.Exchange(ref _milliFramesPerSecond, (long)Math.Round((sent - _statusWindowSent) * 1000.0 / elapsed.TotalSeconds));
         Interlocked.Exchange(ref _positionTicks, Math.Max(_tracker.Estimate(now).Ticks, 0));
         PublishDecoder();
         _statusWindowStart = now;

@@ -29,7 +29,7 @@ public class StatusResponseTests
     [InlineData(GrabSessionPhase.Streaming, "Streaming Big Buck Bunny from Living room to Hyperion.")]
     [InlineData(GrabSessionPhase.Paused, "Paused on Living room: the lights hold the last picture.")]
     [InlineData(GrabSessionPhase.PausedReleased, "Paused on Living room: the lights are back to Hyperion's default until you resume.")]
-    [InlineData(GrabSessionPhase.Reconnecting, "Hyperion is unreachable; reconnecting while Living room plays.")]
+    [InlineData(GrabSessionPhase.Reconnecting, "Hyperion is unreachable; reconnecting.")]
     [InlineData(GrabSessionPhase.WaitingForHyperion, "Hyperion has been unreachable for over a minute: decoding stopped, still trying to connect.")]
     [InlineData(GrabSessionPhase.Stopped, "The lights do not follow the playback on Living room.")]
     public void From_WhilePlaying_DescribesThePhase(GrabSessionPhase phase, string summary)
