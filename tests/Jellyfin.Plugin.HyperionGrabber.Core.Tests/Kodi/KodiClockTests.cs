@@ -13,6 +13,8 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests.Kodi;
 /// <summary>
 /// The clock against a fake Kodi on loopback, with fake time for polling and retries.
 /// </summary>
+/// <remarks>Request timeouts also run on the fake time, so time only moves once the clock waits with its timer armed
+/// (<see cref="KodiClock.Waits"/>, <see cref="KodiClock.Retries"/>), never while a request is on the way.</remarks>
 public sealed class KodiClockTests : IAsyncDisposable
 {
     private static readonly Guid ItemId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
@@ -67,14 +69,12 @@ public sealed class KodiClockTests : IAsyncDisposable
     public async Task ReadsAgainEveryTwoSeconds()
     {
         var clock = Start();
-        await TestHelpers.WaitUntilAsync(() => clock.Latest is not null);
+        await TestHelpers.WaitUntilAsync(() => clock.Latest is not null && clock.Waits >= 1);
         _server.Time = TimeSpan.FromMinutes(7);
 
-        await TestHelpers.WaitUntilAsync(() =>
-        {
-            _time.Advance(TimeSpan.FromMilliseconds(250)); // Until the poll's timer is armed and fires.
-            return clock.Latest?.Position == TimeSpan.FromMinutes(7);
-        });
+        _time.Advance(KodiClock.PollInterval);
+
+        await TestHelpers.WaitUntilAsync(() => clock.Latest?.Position == TimeSpan.FromMinutes(7));
     }
 
     [Fact]
@@ -130,19 +130,19 @@ public sealed class KodiClockTests : IAsyncDisposable
     public async Task ConnectionLost_ReconnectsAfterTheRetryInterval()
     {
         var clock = Start();
-        await TestHelpers.WaitUntilAsync(() => clock.Latest is not null);
-
-        var dropped = _time.GetUtcNow();
+        await TestHelpers.WaitUntilAsync(() => clock.Latest is not null && clock.Waits >= 1);
         _server.DropConnections();
 
-        // The next reading finds the connection closed; after the retry interval the clock connects again.
-        await TestHelpers.WaitUntilAsync(() =>
-        {
-            _time.Advance(TimeSpan.FromMilliseconds(500));
-            return _server.ConnectionCount == 2 && clock.Latest is not null;
-        });
+        _time.Advance(KodiClock.PollInterval); // The next reading finds the connection closed.
+        await TestHelpers.WaitUntilAsync(() => clock.Retries >= 1);
+        Assert.Null(clock.Latest);
+        Assert.Contains("Lost the connection", clock.Description, StringComparison.Ordinal);
         Assert.Contains(_logger.Collector.GetSnapshot(), r => r.Message.Contains("Lost the connection to Kodi", StringComparison.Ordinal));
-        Assert.True(_time.GetUtcNow() - dropped >= KodiClock.RetryInterval);
+
+        _time.Advance(KodiClock.RetryInterval); // The clock connects again.
+
+        await TestHelpers.WaitUntilAsync(() => clock.Latest is not null);
+        Assert.Equal(2, _server.ConnectionCount);
     }
 
     [Fact]

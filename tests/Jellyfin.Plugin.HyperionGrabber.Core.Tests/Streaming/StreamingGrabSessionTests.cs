@@ -905,6 +905,18 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task InvalidKodiPort_StreamsWithoutTheClock()
+    {
+        _settings = _settings with { KodiPort = 0 }; // Only possible by editing the saved XML by hand.
+
+        var session = Start(State(TimeSpan.Zero) with { IsStart = true, RemoteAddress = "192.168.1.50" });
+
+        Assert.True(await session.StreamingStarted.WaitAsync(Ct));
+        Assert.Null(_clockOptions);
+        AssertLogged(LogLevel.Warning, "The Kodi remote control port 0 is not between 1 and 65535");
+    }
+
+    [Fact]
     public async Task ClockReadingThatAgrees_TimesTheLightsByKodi()
     {
         var session = await StartKodiAsync(TimeSpan.FromMinutes(10));

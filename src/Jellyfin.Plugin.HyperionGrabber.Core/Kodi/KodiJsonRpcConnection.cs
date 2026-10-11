@@ -210,7 +210,7 @@ internal sealed class KodiJsonRpcConnection : IAsyncDisposable
         {
             // Disposing.
         }
-        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or InvalidDataException or JsonException)
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException or InvalidDataException or JsonException or InvalidOperationException)
         {
             failure = ex;
         }
@@ -255,7 +255,9 @@ internal sealed class KodiJsonRpcConnection : IAsyncDisposable
             }
             else
             {
-                var error = root.TryGetProperty("error", out var details) && details.TryGetProperty("message", out var text)
+                var error = root.TryGetProperty("error", out var details)
+                    && details.ValueKind == JsonValueKind.Object
+                    && details.TryGetProperty("message", out var text)
                     ? text.ToString()
                     : "no result";
                 answer.TrySetException(new KodiErrorException($"Kodi answered with an error: {error}"));

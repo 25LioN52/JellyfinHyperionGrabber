@@ -44,6 +44,10 @@ public sealed record StreamingSettings
     /// <summary>Gets Kodi's JSON-RPC TCP port.</summary>
     public int KodiPort { get; init; } = DefaultKodiPort;
 
+    /// <summary>Gets a value indicating whether <see cref="KodiPort"/> is a port. An invalid one only keeps Kodi's clock
+    /// off (it is not in <see cref="GetValidationErrors"/>, which would stop the lights for every client).</summary>
+    public bool HasValidKodiPort => KodiPort is >= 1 and <= 65535;
+
     /// <summary>Returns human-readable problems with these settings; empty when they are valid.</summary>
     /// <returns>Validation errors.</returns>
     public IReadOnlyList<string> GetValidationErrors()
@@ -57,11 +61,6 @@ public sealed record StreamingSettings
         if (PauseRelease < TimeSpan.Zero || PauseRelease > MaxPauseRelease)
         {
             errors.Add(string.Create(CultureInfo.InvariantCulture, $"Release after pause must be between 0 and {MaxPauseRelease.TotalSeconds:0} seconds."));
-        }
-
-        if (KodiPort is < 1 or > 65535)
-        {
-            errors.Add("Kodi port must be between 1 and 65535.");
         }
 
         return errors;

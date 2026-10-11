@@ -53,11 +53,12 @@ public class StreamingSettingsTests
     [InlineData(9090, true)]
     [InlineData(65535, true)]
     [InlineData(65536, false)]
-    public void KodiPort_Range(int port, bool valid)
+    public void KodiPort_Range_OnlyDecidesAboutKodisClock(int port, bool valid)
     {
-        var errors = new StreamingSettings { KodiPort = port }.GetValidationErrors();
+        var settings = new StreamingSettings { KodiPort = port };
 
-        Assert.Equal(valid, errors.Count == 0);
+        Assert.Equal(valid, settings.HasValidKodiPort);
+        Assert.Empty(settings.GetValidationErrors()); // The lights still follow every client.
     }
 
     [Fact]

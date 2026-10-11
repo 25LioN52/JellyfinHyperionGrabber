@@ -334,9 +334,19 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             return null;
         }
 
-        var clock = settings.KodiClock && KodiClockOptions.IsKodi(state.Client) && KodiClockOptions.ParseAddress(state.RemoteAddress) is { } address
-            ? new KodiClockOptions(address, settings.KodiPort, state.ItemId)
-            : null;
+        KodiClockOptions? clock = null;
+        if (settings.KodiClock && KodiClockOptions.IsKodi(state.Client) && KodiClockOptions.ParseAddress(state.RemoteAddress) is { } address)
+        {
+            if (settings.HasValidKodiPort)
+            {
+                clock = new KodiClockOptions(address, settings.KodiPort, state.ItemId);
+            }
+            else
+            {
+                Log.InvalidKodiPort(_logger, settings.KodiPort);
+            }
+        }
+
         return new Plan(hyperion, frames, settings.LatencyOffset, settings.PauseRelease, clock);
     }
 
@@ -988,5 +998,8 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 22, Level = LogLevel.Information, Message = "Kodi's clock shows {Kodi} but the playback reports {Reported}; the timing uses the reports until they agree")]
         public static partial void ClockDisagrees(ILogger logger, TimeSpan kodi, TimeSpan reported);
+
+        [LoggerMessage(EventId = 23, Level = LogLevel.Warning, Message = "The Kodi remote control port {Port} is not between 1 and 65535; the timing uses the client's reports")]
+        public static partial void InvalidKodiPort(ILogger logger, int port);
     }
 }

@@ -52,6 +52,8 @@ internal sealed partial class KodiClock : IPlaybackClock
     private int _playerChanged;
     private Task _run = Task.CompletedTask;
     private int _disposed;
+    private long _waits;
+    private long _retries;
 
     private KodiClock(KodiClockOptions options, TimeProvider timeProvider, ILogger logger)
     {
@@ -69,6 +71,12 @@ internal sealed partial class KodiClock : IPlaybackClock
 
     /// <summary>Gets the clock's task (lets tests wait for it to end).</summary>
     internal Task Completion => _run;
+
+    /// <summary>Gets how often the clock started waiting for its next reading, timer armed (lets tests move time safely).</summary>
+    internal long Waits => Interlocked.Read(ref _waits);
+
+    /// <summary>Gets how often the clock started waiting to connect again, timer armed (lets tests move time safely).</summary>
+    internal long Retries => Interlocked.Read(ref _retries);
 
     /// <summary>Starts reading the position on a background task.</summary>
     /// <param name="options">Which Kodi, and for which item.</param>
@@ -177,7 +185,9 @@ internal sealed partial class KodiClock : IPlaybackClock
                     }
                 }
 
-                await Task.Delay(RetryInterval, _timeProvider, token).ConfigureAwait(false);
+                var retry = Task.Delay(RetryInterval, _timeProvider, token);
+                Interlocked.Increment(ref _retries);
+                await retry.ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -328,6 +338,7 @@ internal sealed partial class KodiClock : IPlaybackClock
     {
         using var poll = new CancellationTokenSource(PollInterval, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, poll.Token);
+        Interlocked.Increment(ref _waits);
         try
         {
             await _wake.Reader.ReadAsync(linked.Token).ConfigureAwait(false);
