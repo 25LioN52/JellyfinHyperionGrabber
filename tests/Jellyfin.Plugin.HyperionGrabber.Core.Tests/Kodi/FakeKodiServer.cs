@@ -102,7 +102,7 @@ internal sealed class FakeKodiServer : IAsyncDisposable
         }
         catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
         {
-            System.Diagnostics.Debug.WriteLine($"Ignored expected exception during FakeKodiServer disposal: {ex}");
+            // Expected: the listener and the connections were closed above.
         }
 
         _stopping.Dispose();
@@ -127,35 +127,37 @@ internal sealed class FakeKodiServer : IAsyncDisposable
 
     private async Task ServeAsync(TcpClient client)
     {
-        using var _ = client;
-        var splitter = new JsonObjectSplitter(1 << 16);
-        try
+        using (client)
         {
-            var stream = client.GetStream();
-            while (true)
+            var splitter = new JsonObjectSplitter(1 << 16);
+            try
             {
-                var read = await stream.ReadAsync(splitter.GetBuffer(), _stopping.Token);
-                if (read == 0)
+                var stream = client.GetStream();
+                while (true)
                 {
-                    return;
-                }
+                    var read = await stream.ReadAsync(splitter.GetBuffer(), _stopping.Token);
+                    if (read == 0)
+                    {
+                        return;
+                    }
 
-                splitter.Advance(read);
-                while (splitter.TryRead(out var request))
-                {
-                    var (id, method) = ParseRequest(request);
-                    var answer = Encoding.UTF8.GetBytes(
-                        "{\"jsonrpc\":\"2.0\",\"method\":\"System.OnIdle\",\"params\":{\"data\":\"{not json}\",\"sender\":\"xbmc\"}}" + Answer(id, method));
-                    var half = answer.Length / 2;
-                    await stream.WriteAsync(answer.AsMemory(0, half), _stopping.Token);
-                    await stream.FlushAsync(_stopping.Token);
-                    await stream.WriteAsync(answer.AsMemory(half), _stopping.Token);
+                    splitter.Advance(read);
+                    while (splitter.TryRead(out var request))
+                    {
+                        var (id, method) = ParseRequest(request);
+                        var answer = Encoding.UTF8.GetBytes(
+                            "{\"jsonrpc\":\"2.0\",\"method\":\"System.OnIdle\",\"params\":{\"data\":\"{not json}\",\"sender\":\"xbmc\"}}" + Answer(id, method));
+                        var half = answer.Length / 2;
+                        await stream.WriteAsync(answer.AsMemory(0, half), _stopping.Token);
+                        await stream.FlushAsync(_stopping.Token);
+                        await stream.WriteAsync(answer.AsMemory(half), _stopping.Token);
+                    }
                 }
             }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or System.IO.IOException or SocketException or ObjectDisposedException)
-        {
-            // The client or the test closed the connection.
+            catch (Exception ex) when (ex is OperationCanceledException or System.IO.IOException or SocketException or ObjectDisposedException)
+            {
+                // The client or the test closed the connection.
+            }
         }
     }
 
