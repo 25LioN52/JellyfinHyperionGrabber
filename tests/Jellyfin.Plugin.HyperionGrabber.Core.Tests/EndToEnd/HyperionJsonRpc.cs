@@ -149,6 +149,13 @@ public sealed class HyperionJsonRpc : IAsyncDisposable
         return reply.GetProperty("info");
     }
 
+    /// <summary>
+    /// Clears a priority on one instance, like the web UI's remote control page, Home Assistant or hyperion-remote. A
+    /// FlatBuffers client at that priority stays connected; only the instance forgets the priority.
+    /// </summary>
+    public Task ClearAsync(int instance, int priority, CancellationToken cancellationToken)
+        => SendAsync(new JsonObject { ["command"] = "clear", ["priority"] = priority, ["instance"] = instance }, cancellationToken);
+
     /// <summary>Saves settings of one instance (keys are setting types such as <c>leds</c> or <c>device</c>).</summary>
     public Task SaveInstanceSettingsAsync(int instance, JsonObject settings, CancellationToken cancellationToken)
         => SendAsync(

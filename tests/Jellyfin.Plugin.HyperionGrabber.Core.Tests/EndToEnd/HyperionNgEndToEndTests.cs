@@ -113,6 +113,43 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
         Assert.Equal(ReversedEdgeColors, second.Select(ColorName));
     }
 
+    [Fact]
+    public async Task Picture_ComesBack_AfterTheRemoteControlClearsOurPriority()
+    {
+        fixture.SkipIfUnavailable();
+        await using var api = await fixture.ConnectApiAsync(Ct);
+        await using var client = await HyperionClient.ConnectAsync(fixture.ClientOptions, NullLogger.Instance, Ct);
+        await StreamUntilLedColorsAsync(client, api, First, EdgeColors);
+
+        // Not sending meanwhile, so nothing can bring the priority back before the clear is seen to have worked.
+        await api.ClearAsync(First, fixture.ClientOptions.Priority, Ct);
+        await Eventually.ReachAsync(() => api.GetPrioritiesAsync(First, Ct), priorities => Ours(priorities) is null, Timeout, Describe);
+        Output($"priority {fixture.ClientOptions.Priority} cleared on instance {First} over JSON-RPC");
+        var colors = await StreamUntilLedColorsAsync(client, api, First, EdgeColors);
+        var entry = Ours(await api.GetPrioritiesAsync(First, Ct));
+
+        Assert.Equal(EdgeColors, colors.Select(ColorName));
+        Assert.NotNull(entry);
+        Assert.StartsWith(fixture.ClientOptions.Origin + "@", entry.Origin, StringComparison.Ordinal);
+        Assert.True(client.IsConnected, "The picture came back over the same connection, not a new one.");
+    }
+
+    /// <summary>Streams the still frame until an instance's LEDs show the expected colors.</summary>
+    private static async Task<IReadOnlyList<Rgb>> StreamUntilLedColorsAsync(HyperionClient client, HyperionJsonRpc api, int instance, IEnumerable<string> expected)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var streaming = StreamStillFrameAsync(client, stop.Token);
+        try
+        {
+            return await ReadLedColorsUntilAsync(api, instance, expected);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await streaming;
+        }
+    }
+
     /// <summary>Sends the test pattern with its marker in the top-left corner, away from the sampled edge middles, at 10 fps.</summary>
     private static async Task StreamStillFrameAsync(HyperionClient client, CancellationToken cancellationToken)
     {
