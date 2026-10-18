@@ -102,8 +102,9 @@ FlatBuffers server is shared by all instances.
   than the WLED strip: Hue lamps change color more slowly.
 - An instance you start while a video plays picks the picture up straight away. A **stopped** instance gets nothing.
 - The plugin appears in each instance's priority list (Hyperion.ng dashboard) as `Jellyfin@<address of the Jellyfin
-  server>`. To keep one instance out of the movie, stop it, or give that instance a source with a lower priority
-  number than the plugin's (for example a color set from the Hyperion app on that instance).
+  server>`; Hyperion.ng may write an IPv4 address as `::ffff:192.168.1.10`. To keep one instance out of the movie,
+  stop it, or give that instance a source with a lower priority number than the plugin's (for example a color set
+  from the Hyperion app on that instance).
 
 This is tested automatically against Hyperion.ng with two instances on every change to the plugin; according to its
 source code, HyperHDR 22 distributes the picture the same way.
