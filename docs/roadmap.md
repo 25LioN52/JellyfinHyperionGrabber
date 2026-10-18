@@ -18,7 +18,9 @@ Milestones are deliberately small so each one ships something usable. Items beco
       about 160 px wide, keeping the aspect ratio; uses Jellyfin's hardware acceleration settings, CPU fallback
 - [x] Stream to Hyperion at a configurable frame rate (default 25), bounded buffers, frame dropping under load
 - [x] Reconnect with backoff when Hyperion restarts; release the priority on stop *(shipped in 0.5)*
-- [ ] End-to-end test against a real Hyperion.ng in CI (container); verify the multi-instance (WLED + Hue) behaviour
+- [x] End-to-end test against a real Hyperion.ng in CI (container); verify the multi-instance (WLED + Hue) behaviour
+      *(done: the picture reaches every running instance, see
+      [Several devices at once](user-guide/hyperion-setup.md#several-devices-at-once))*
 - [x] Diagnostics: status panel on the config page (connected, fps, current session, last problem) *(shipped in 0.6)*
 
 ## M2: Sync

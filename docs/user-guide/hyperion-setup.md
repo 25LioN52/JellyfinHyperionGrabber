@@ -86,10 +86,27 @@ Hyperion drives the devices, so they are configured only in Hyperion:
   in real time; leave WLED's own effects off while Hyperion is active.
 - **Philips Hue**: add a *Philips Hue* device using the Hue Entertainment API (you need an Entertainment area in the
   Hue app and to press the bridge button while pairing).
-- **Several devices at once** (for example a WLED strip behind the TV and Hue lamps in the room): Hyperion.ng and
-  HyperHDR support multiple **instances**, one per device. How a FlatBuffers stream reaches each instance depends on
-  your server version and configuration; we are verifying the exact steps for WLED + Hue and will document them here
-  *(open question, see the [roadmap](../roadmap.md))*.
+
+### Several devices at once
+
+Hyperion drives one LED device per **instance**. For a WLED strip behind the TV and Hue lamps in the room, use two
+instances: open **General** (HyperHDR: **General settings**), and under **LED Hardware Instance Management** click
+**Create Instance**, then **Start**. The instance selector in the top bar chooses which instance the LED Hardware,
+layout and color pages configure. Give the first instance the WLED device and the second one the Hue device.
+
+There is nothing to set up in the plugin: **the picture reaches every running instance**, because Hyperion's
+FlatBuffers server is shared by all instances.
+
+- Each instance turns the picture into colors with its **own** LED layout, smoothing and color settings. For Hue,
+  give each lamp the part of the picture it should follow (for example the left and right third), and more smoothing
+  than the WLED strip: Hue lamps change color more slowly.
+- An instance you start while a video plays picks the picture up straight away. A **stopped** instance gets nothing.
+- The plugin appears in each instance's priority list (Hyperion.ng dashboard) as `Jellyfin@<address of the Jellyfin
+  server>`. To keep one instance out of the movie, stop it, or give that instance a source with a lower priority
+  number than the plugin's (for example a color set from the Hyperion app on that instance).
+
+This is tested automatically against Hyperion.ng with two instances on every change to the plugin; according to its
+source code, HyperHDR 22 distributes the picture the same way.
 
 ## Color and smoothing
 

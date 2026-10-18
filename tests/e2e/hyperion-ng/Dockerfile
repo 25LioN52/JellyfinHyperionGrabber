@@ -28,4 +28,5 @@ ENV QT_QPA_PLATFORM=offscreen
 # 19400: FlatBuffers server (what the plugin talks to); 19444: JSON-RPC (what the tests inspect); 8090: web UI.
 EXPOSE 19400 19444 8090
 
-ENTRYPOINT ["hyperiond", "--service", "--info", "--userdata", "/home/hyperion/.hyperion"]
+# Line-buffered, so `docker logs` shows what happened up to the moment it is called.
+ENTRYPOINT ["stdbuf", "-oL", "-eL", "hyperiond", "--service", "--info", "--userdata", "/home/hyperion/.hyperion"]

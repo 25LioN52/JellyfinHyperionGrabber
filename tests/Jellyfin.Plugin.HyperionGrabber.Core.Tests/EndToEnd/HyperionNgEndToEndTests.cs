@@ -49,6 +49,7 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
         await Eventually.ReachAsync(() => api.GetPrioritiesAsync(First, Ct), priorities => Ours(priorities) is null, Timeout, Describe);
 
         var entry = Ours(whilePlaying)!;
+        Output("instance 0 priorities while playing: " + Describe(whilePlaying));
         Assert.Equal("FLATBUFSERVER", entry.ComponentId);
         Assert.StartsWith(options.Origin + "@", entry.Origin, StringComparison.Ordinal);
         Assert.True(client.IsConnected, "The player's Clear released the priority, not a dropped connection.");
@@ -89,6 +90,7 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
         Assert.Equal(EdgeColors, first.Select(ColorName));
         Assert.Equal(ReversedEdgeColors, second.Select(ColorName));
         Assert.NotNull(onSecond);
+        Output($"instance {fixture.SecondInstance} lists {onSecond}");
         Assert.StartsWith(fixture.ClientOptions.Origin + "@", onSecond.Origin, StringComparison.Ordinal);
     }
 
@@ -132,12 +134,16 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
     }
 
     /// <summary>Reads an instance's LED colors until they match (smoothing fades in, a starting instance needs a moment).</summary>
-    private static Task<IReadOnlyList<Rgb>> ReadLedColorsUntilAsync(HyperionJsonRpc api, int instance, IEnumerable<string> expected)
-        => Eventually.ReachAsync(
+    private static async Task<IReadOnlyList<Rgb>> ReadLedColorsUntilAsync(HyperionJsonRpc api, int instance, IEnumerable<string> expected)
+    {
+        var colors = await Eventually.ReachAsync(
             () => api.GetLedColorsAsync(instance, Ct),
-            colors => colors.Select(ColorName).SequenceEqual(expected),
+            leds => leds.Select(ColorName).SequenceEqual(expected),
             Timeout,
-            colors => $"instance {instance}: " + string.Join(", ", colors.Select(color => $"{ColorName(color)} ({color.R},{color.G},{color.B})")));
+            leds => Describe(instance, leds));
+        Output(Describe(instance, colors));
+        return colors;
+    }
 
     /// <summary>Names a color by the channels that are on, which survives Hyperion's gamma and brightness compensation.</summary>
     private static string ColorName(Rgb color)
@@ -161,6 +167,12 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
     }
 
     private static string Describe(IReadOnlyList<HyperionPriorityInfo> priorities) => "[" + string.Join(", ", priorities) + "]";
+
+    private static string Describe(int instance, IReadOnlyList<Rgb> colors)
+        => $"instance {instance} LEDs: " + string.Join(", ", colors.Select(color => $"{ColorName(color)} ({color.R},{color.G},{color.B})"));
+
+    /// <summary>Records what the real server reported in the test output (and the TRX file), for reviews.</summary>
+    private static void Output(string line) => TestContext.Current.TestOutputHelper?.WriteLine(line);
 
     private HyperionPriorityInfo? Ours(IReadOnlyList<HyperionPriorityInfo> priorities)
         => priorities.SingleOrDefault(priority => priority.Priority == fixture.ClientOptions.Priority);
