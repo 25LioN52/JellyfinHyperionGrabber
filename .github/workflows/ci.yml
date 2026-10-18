@@ -86,6 +86,65 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
+  e2e-hyperion-ng:
+    name: End-to-end (Hyperion.ng)
+    # A real Hyperion.ng from its official APT repository, in Docker (tests/e2e/hyperion-ng). The tests check the
+    # server's priority list and the colors it sends to each instance's LEDs over JSON-RPC (docs/development/testing.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 9.0.x
+          global-json-file: global.json
+
+      - name: Start Hyperion.ng
+        run: |
+          docker build --pull -t hyperion-ng-e2e tests/e2e/hyperion-ng
+          docker run -d --name hyperion-ng-e2e -p 127.0.0.1:19400:19400 -p 127.0.0.1:19444:19444 hyperion-ng-e2e
+          echo "Testing against $(docker run --rm --entrypoint dpkg-query hyperion-ng-e2e --show --showformat '${Package} ${Version}' hyperion)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build tests
+        run: dotnet build tests/Jellyfin.Plugin.HyperionGrabber.Core.Tests -c Release
+
+      - name: End-to-end tests (Jellyfin 10.11 and 12 builds, one after the other)
+        env:
+          HYPERION_GRABBER_E2E_HOST: 127.0.0.1
+        # Both builds share the one server, so they must not run at the same time.
+        run: >
+          dotnet test --project tests/Jellyfin.Plugin.HyperionGrabber.Core.Tests -c Release --no-build
+          --max-parallel-test-modules 1 --filter-namespace "*.EndToEnd"
+          --results-directory TestResults --report-trx
+
+      - name: Report failed tests as annotations
+        if: failure()
+        shell: pwsh
+        run: |
+          foreach ($trx in Get-ChildItem TestResults -Filter '*.trx' -Recurse -ErrorAction SilentlyContinue) {
+            [xml] $doc = Get-Content $trx.FullName -Raw
+            foreach ($result in $doc.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'Failed' }) {
+              $message = "$($result.Output.ErrorInfo.Message)`n$($result.Output.ErrorInfo.StackTrace)".Trim()
+              if ($message.Length -gt 3000) { $message = $message.Substring(0, 3000) + ' ...' }
+              $escaped = $message.Replace('%', '%25').Replace("`r", '').Replace("`n", '%0A')
+              Write-Output "::error title=$($result.testName) ($($trx.BaseName))::$escaped"
+              Add-Content $env:GITHUB_STEP_SUMMARY "### ``$($result.testName)`` ($($trx.BaseName))`n``````text`n$message`n```````n"
+            }
+          }
+
+      - name: Hyperion.ng log
+        if: always()
+        run: docker logs hyperion-ng-e2e 2>&1 | tail -n 300
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-e2e-hyperion-ng
+          path: TestResults
+          if-no-files-found: ignore
+
   package:
     name: Package plugin
     needs: build
