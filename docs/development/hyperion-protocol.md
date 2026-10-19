@@ -49,15 +49,28 @@ of slot *n* is `4 + 2n`):
 1. **Connect** to the FlatBuffers port.
 2. **Register** with `origin` (shown in Hyperion's priority list) and `priority`.
     - Hyperion.ng accepts **100-199** only; other values get an error reply
-      (*"The priority X is not in the priority range between 100 and 199"*). HyperHDR has no range check.
+      (*"The priority X is not in the priority range between 100 and 199"*). HyperHDR 22 sends no error; it logs one
+      and ignores priorities outside 50-250.
     - Success reply: `registered = priority`. Both servers send it.
 3. **Send images**: `Image { RawImage { data, width, height }, duration }`.
     - `data` is RGB24, row-major, exactly `width * height * 3` bytes (Hyperion.ng also accepts 4 bytes per pixel).
     - `duration` in ms; `-1` means until replaced. We send `-1`.
-    - Hyperion.ng replies to every image with an empty success reply; HyperHDR replies too. **Replies must be read**,
-      otherwise they pile up in socket buffers.
+    - Both servers reply to every image with a success reply carrying `registered = <the connection's priority>`.
+      **Replies must be read**, otherwise they pile up in socket buffers.
 4. **Clear** with our priority to release it. `priority = -1` clears **all** priorities: never send it.
+   Hyperion.ng then forgets the connection's priority (later replies say `registered = -1`, and later images are
+   dropped until the client registers again); HyperHDR answers `Clear` and `Color` with an empty reply.
 5. **Disconnect**: both servers clear the client's priority when the connection closes.
+
+**Registering again.** A reply with `registered = -1` and no error means Hyperion.ng no longer shows our images:
+an instance got an image for a priority it does not have, typically because its remote control (web UI, Home
+Assistant, `hyperion-remote`: JSON-RPC `clear` / `clearall`) cleared it while our connection stayed open
+(`Hyperion::setInputImage` → `globalRegRequired` → `FlatBufferClient::registationRequired`). It drops every such
+image, so without a new `Register` the LEDs stay dark. `HyperionClient` therefore sends `Register` again before the
+next image or color, at most once a second (Hyperion.ng also asks for images that were already on their way), and logs
+it at Debug. It never registers before a `Clear`. The same rule covers the other `-1` replies: after our own `Clear`
+on Hyperion.ng a new `Register` is needed anyway, and after HyperHDR's empty `Clear`/`Color` reply one extra
+`Register` is harmless. HyperHDR 22 never asks: an instance registers a missing priority itself on the next image.
 
 **Idle timeout.** Both servers close a connection that has not sent anything for a configured time (the FlatBuffers
 server's `timeout`, 5 s by default). The FlatBuffers protocol cannot read that setting, so a streaming session resends
@@ -79,14 +92,16 @@ instance receives every client's registration, images and clears:
   `registerGlobalInput` / `setGlobalInputImage` / `clearGlobalInput` on `GlobalSignals`, and every `Hyperion` instance
   connects to them. When an instance starts while clients are connected, `HyperionDaemon` calls
   `FlatBufferServer::registerClients`, so it shows the stream at once. An instance that gets an image for a priority it
-  does not know asks for a re-registration with a reply `registered = -1` (we ignore it; `registerClients` makes it
-  unnecessary). When the last instance stops, the server closes and drops all connections.
+  does not know asks for a re-registration with a reply `registered = -1`, and we register again (see *Registering
+  again* above). A `Register` goes to every instance, so it is harmless for those that still had the priority. When
+  the last instance stops, the server closes and drops all connections.
 - **HyperHDR 22** (`FlatBuffersServer.cpp`, `HyperHdrInstance.cpp`): images go to `GlobalSignals::SignalSetGlobalImage`,
   which every `HyperHdrInstance` handles; an instance registers the priority on the first image it receives, so an
   instance started later joins with the next frame.
 
 So one plugin connection drives a WLED instance and a Hue instance together, each through its own LED layout,
-smoothing and calibration; priorities are per instance. The end-to-end tests verify this on both servers.
+smoothing and calibration; priorities are per instance. The end-to-end tests verify this on both servers, including
+that the picture comes back after the remote control clears our priority.
 
 ## Our codec
 

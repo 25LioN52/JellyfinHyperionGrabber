@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -18,14 +19,31 @@ public sealed class HyperionNgApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
 {
     public override async Task<IReadOnlyList<Rgb>> GetLedColorsAsync(int instance, CancellationToken cancellationToken)
     {
-        var reply = await SendToInstanceAsync(
-            instance,
-            new JsonObject { ["command"] = "instance-data", ["subcommand"] = "getLedSnapshot" },
-            cancellationToken);
+        // Hyperion.ng answers "No LED color data available" when the instance did not update its LEDs within a
+        // second, which it stops doing when it has nothing to show.
+        JsonElement reply;
+        try
+        {
+            reply = await SendToInstanceAsync(
+                instance,
+                new JsonObject { ["command"] = "instance-data", ["subcommand"] = "getLedSnapshot" },
+                cancellationToken);
+        }
+        catch (HyperionJsonRpcException ex) when (ex.Message.Contains("No LED color data available", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
         return reply.GetProperty("info").GetProperty("leds").EnumerateArray()
             .Select(led => new Rgb((byte)led[0].GetInt32(), (byte)led[1].GetInt32(), (byte)led[2].GetInt32()))
             .ToList();
     }
+
+    // Unlike the other commands, clear takes a list of instances (schema-clear.json).
+    public override Task ClearAsync(int instance, int priority, CancellationToken cancellationToken)
+        => SendGlobalAsync(
+            new JsonObject { ["command"] = "clear", ["priority"] = priority, ["instance"] = new JsonArray(instance) },
+            cancellationToken);
 
     public override async Task<IReadOnlyList<HyperionLedDeviceInfo>> GetLedDevicesAsync(CancellationToken cancellationToken)
     {

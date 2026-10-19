@@ -83,8 +83,17 @@ public abstract class HyperionServerApi(HyperionJsonRpc rpc) : IAsyncDisposable
             .ToList();
     }
 
-    /// <summary>Returns the colors a running instance computed for its LEDs from the current picture.</summary>
+    /// <summary>
+    /// Returns the colors a running instance computed for its LEDs from the current picture, or an empty list when it
+    /// has none to show (for example after its last source was cleared).
+    /// </summary>
     public abstract Task<IReadOnlyList<Rgb>> GetLedColorsAsync(int instance, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Clears a priority on one instance, like the web UI's remote control page, Home Assistant or hyperion-remote. A
+    /// FlatBuffers client at that priority stays connected; only the instance forgets the priority.
+    /// </summary>
+    public abstract Task ClearAsync(int instance, int priority, CancellationToken cancellationToken);
 
     /// <summary>Returns the LED device type of every instance, as far as the server shows it.</summary>
     public abstract Task<IReadOnlyList<HyperionLedDeviceInfo>> GetLedDevicesAsync(CancellationToken cancellationToken);

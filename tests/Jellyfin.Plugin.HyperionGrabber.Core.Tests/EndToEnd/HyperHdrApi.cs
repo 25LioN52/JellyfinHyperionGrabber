@@ -53,6 +53,9 @@ public sealed class HyperHdrApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
         return channels.Chunk(3).Where(led => led.Length == 3).Select(led => new Rgb(led[0], led[1], led[2])).ToList();
     }
 
+    public override Task ClearAsync(int instance, int priority, CancellationToken cancellationToken)
+        => SendToInstanceAsync(instance, new JsonObject { ["command"] = "clear", ["priority"] = priority }, cancellationToken);
+
     public override async Task<IReadOnlyList<HyperionLedDeviceInfo>> GetLedDevicesAsync(CancellationToken cancellationToken)
     {
         var devices = new List<HyperionLedDeviceInfo>();

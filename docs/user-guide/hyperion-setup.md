@@ -105,6 +105,9 @@ FlatBuffers server is shared by all instances.
   Hyperion.ng and HyperHDR may write an IPv4 address as `::ffff:192.168.1.10`. To keep one instance out of the movie,
   stop it, or give that instance a source with a lower priority number than the plugin's (for example a color set
   from the Hyperion app on that instance).
+- Clearing the plugin's entry while a video plays (Hyperion.ng's **Remote Control** page, Home Assistant or
+  `hyperion-remote`) blanks the LEDs for about a second only: the plugin registers again and the picture comes back.
+  To turn the lights off for the rest of the movie, use one of the ways above.
 
 This is tested automatically against Hyperion.ng and HyperHDR 22, each with two instances, on every change to the
 plugin.

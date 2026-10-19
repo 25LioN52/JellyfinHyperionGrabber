@@ -61,6 +61,7 @@ computes for its LEDs.
 | `TestPattern_LightsTheLedOfEachEdgeInThatEdgesColor` | LEDs sampling the middle of the top, right, bottom and left edge show red, green, blue and yellow: byte order and orientation of our `RawImage` |
 | `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
 | `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
+| `Picture_ComesBack_AfterTheRemoteControlClearsOurPriority` | After a JSON-RPC `clear` of priority 150 on instance 0 (as from the web UI's remote control), the next images over the same connection light the LEDs again: Hyperion.ng asks for a new `Register` with `registered = -1` and the client sends it; HyperHDR registers the priority itself on the next image |
 
 Colors are compared by which channels are on, because Hyperion.ng's brightness compensation and smoothing change the
 values (yellow arrives as `128,128,0`; HyperHDR reports the exact colors, before its color processing). Reads are
