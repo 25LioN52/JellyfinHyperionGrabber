@@ -11,12 +11,15 @@ using Jellyfin.Plugin.HyperionGrabber.TestSupport;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests.Hyperion;
 
 public class HyperionClientTests
 {
+    private static readonly byte[] Pixel = [0x10, 0x20, 0x30];
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -234,6 +237,130 @@ public class HyperionClientTests
         await TestHelpers.WaitUntilAsync(() => !client.IsConnected);
 
         await Assert.ThrowsAsync<HyperionConnectionException>(async () => await client.SendImageAsync(new byte[3], 1, 1, Ct));
+    }
+
+    [Fact]
+    public async Task SendImageAsync_AfterHyperionAsksToRegisterAgain_RegistersBeforeTheNextImage()
+    {
+        // Hyperion.ng's remote control cleared our priority: the next image is answered with registered = -1.
+        await using var server = FakeHyperionServer.Start();
+        var time = new FakeTimeProvider();
+        var logger = new FakeLogger();
+        await using var client = await HyperionClient.ConnectAsync(OptionsFor(server, priority: 120), logger, time, Ct);
+        await server.NextRequestAsync<RegisterRequest>();
+        time.Advance(TimeSpan.FromSeconds(1));
+        server.ClearPrioritiesRemotely();
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await TestHelpers.WaitUntilAsync(() => client.IsRegistrationRequested);
+
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.Equal(new RegisterRequest(HyperionDefaults.Origin, 120), await server.NextRequestAsync());
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.True(client.IsConnected);
+        var record = Assert.Single(logger.Collector.GetSnapshot(), r => r.Message.Contains("again", StringComparison.Ordinal));
+        Assert.Equal(LogLevel.Debug, record.Level);
+    }
+
+    [Fact]
+    public async Task SendImageAsync_WhenAskedWithinASecondOfTheLastRegister_RegistersOnceTheSecondHasPassed()
+    {
+        await using var server = FakeHyperionServer.Start();
+        var time = new FakeTimeProvider();
+        var logger = new FakeLogger();
+        await using var client = await HyperionClient.ConnectAsync(OptionsFor(server), logger, time, Ct);
+        await server.NextRequestAsync<RegisterRequest>();
+        server.ClearPrioritiesRemotely();
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await TestHelpers.WaitUntilAsync(() => client.IsRegistrationRequested);
+
+        time.Advance(TimeSpan.FromMilliseconds(999));
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync()); // answered with registered = -1
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync()); // within a second of the first Register
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.IsType<RegisterRequest>(await server.NextRequestAsync());
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.Single(logger.Collector.GetSnapshot(), r => r.Message.Contains("again", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SendColorAsync_AfterHyperionAsksToRegisterAgain_RegistersBeforeTheColor()
+    {
+        await using var server = FakeHyperionServer.Start();
+        var time = new FakeTimeProvider();
+        await using var client = await HyperionClient.ConnectAsync(OptionsFor(server), NullLogger.Instance, time, Ct);
+        await server.NextRequestAsync<RegisterRequest>();
+        time.Advance(TimeSpan.FromSeconds(1));
+        server.ClearPrioritiesRemotely();
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await TestHelpers.WaitUntilAsync(() => client.IsRegistrationRequested);
+
+        await client.SendColorAsync(0x11, 0x22, 0x33, Ct);
+
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.IsType<RegisterRequest>(await server.NextRequestAsync());
+        Assert.IsType<ColorRequest>(await server.NextRequestAsync());
+    }
+
+    [Fact]
+    public async Task SendImageAsync_AfterClearingOwnPriority_RegistersBeforeTheNextImage()
+    {
+        // Hyperion.ng forgets the connection's priority on its own Clear and answers it with registered = -1.
+        await using var server = FakeHyperionServer.Start();
+        var time = new FakeTimeProvider();
+        await using var client = await HyperionClient.ConnectAsync(OptionsFor(server), NullLogger.Instance, time, Ct);
+        await server.NextRequestAsync<RegisterRequest>();
+        time.Advance(TimeSpan.FromSeconds(1));
+        await client.ClearAsync(Ct);
+        await TestHelpers.WaitUntilAsync(() => client.IsRegistrationRequested);
+
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+
+        Assert.Equal(new ClearRequest(HyperionDefaults.Priority), await server.NextRequestAsync());
+        Assert.Equal(new RegisterRequest(HyperionDefaults.Origin, HyperionDefaults.Priority), await server.NextRequestAsync());
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WhenHyperionAskedToRegisterAgain_ClearsWithoutRegistering()
+    {
+        await using var server = FakeHyperionServer.Start();
+        var time = new FakeTimeProvider();
+        var client = await HyperionClient.ConnectAsync(OptionsFor(server), NullLogger.Instance, time, Ct);
+        await server.NextRequestAsync<RegisterRequest>();
+        time.Advance(TimeSpan.FromSeconds(1));
+        server.ClearPrioritiesRemotely();
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await TestHelpers.WaitUntilAsync(() => client.IsRegistrationRequested);
+
+        await client.DisposeAsync();
+
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.Equal(new ClearRequest(HyperionDefaults.Priority), await server.NextRequestAsync());
+    }
+
+    [Fact]
+    public async Task ReceivingReplies_WhileRegistered_DoesNotAskToRegisterAgain()
+    {
+        // Hyperion.ng's success replies carry registered = <priority>; only -1 asks for a Register.
+        await using var server = FakeHyperionServer.Start();
+        await using var client = await ConnectAsync(server);
+        await server.NextRequestAsync<RegisterRequest>();
+
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+        await client.SendColorAsync(0x11, 0x22, 0x33, Ct);
+        await client.SendImageAsync(Pixel, 1, 1, Ct);
+
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.IsType<ColorRequest>(await server.NextRequestAsync());
+        Assert.IsType<ImageRequest>(await server.NextRequestAsync());
+        Assert.False(client.IsRegistrationRequested);
     }
 
     private static HyperionClientOptions OptionsFor(FakeHyperionServer server, int priority = HyperionDefaults.Priority) => new()
