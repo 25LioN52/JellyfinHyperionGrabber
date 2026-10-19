@@ -102,8 +102,9 @@ If two selected devices play at the same time, the one that started most recentl
 the other one takes over.
 
 The picture is decoded with Jellyfin's FFmpeg and the hardware acceleration set under
-**Dashboard → Playback → Transcoding**, scaled to 160 pixels wide and, for HDR video, tone mapped to SDR; see
-[Installation](installation.md#docker-notes).
+**Dashboard → Playback → Transcoding**, scaled to 160 pixels wide in the shape the TV shows (anamorphic DVDs
+included) and, for HDR video, tone mapped to SDR; see [Installation](installation.md#docker-notes). Black bars of
+widescreen films are handled by Hyperion; see [Black bars](hyperion-setup.md#black-bars-widescreen-films).
 
 ## More playback settings *(planned)*
 

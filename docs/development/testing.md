@@ -69,6 +69,7 @@ computes for its LEDs.
 | `TestPattern_LightsTheLedOfEachEdgeInThatEdgesColor` | LEDs sampling the middle of the top, right, bottom and left edge show red, green, blue and yellow: byte order and orientation of our `RawImage` |
 | `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
 | `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
+| `BlackBars_AreCutOffByHyperion_SoTheEdgeLedsShowThePicture` | A letterboxed (bars at the top and bottom) and a pillarboxed (bars at the sides) test pattern light every edge LED in the pattern's color, not black: Hyperion's black bar detector finds the bars in our picture ([ADR 0013](adr/0013-black-bars-and-aspect-ratio.md)) |
 | `Picture_ComesBack_AfterTheRemoteControlClearsOurPriority` | After a JSON-RPC `clear` of priority 150 on instance 0 (as from the web UI's remote control), the next images over the same connection light the LEDs again: Hyperion.ng asks for a new `Register` with `registered = -1` and the client sends it; HyperHDR registers the priority itself on the next image |
 
 Colors are compared by which channels are on, because Hyperion.ng's brightness compensation and smoothing change the
@@ -98,8 +99,8 @@ the connection); `HyperionNgApi` and `HyperHdrApi` cover the differences:
 - **Skipped** everywhere else: without `HYPERION_GRABBER_E2E_HOST` the tests report as skipped.
 - **Preparation.** `HyperionServerFixture` asks the server what it is (`sysinfo`), logs in with its factory password
   (override with `HYPERION_GRABBER_E2E_PASSWORD`), gives instance 0 four LEDs on the `file` device, creates the
-  instance `Grabber E2E second instance` with the reverse layout, turns off the startup effect and waits for the ones
-  already playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real
+  instance `Grabber E2E second instance` with the reverse layout, turns off the startup effect, turns on the black bar
+  detector with Hyperion.ng's defaults (HyperHDR's default is off) and waits for the startup effects already playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real
   setup. HyperHDR shows the settings of running instances only, so a stopped instance other than the fixture's own is
   refused too.
 

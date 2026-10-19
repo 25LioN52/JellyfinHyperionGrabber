@@ -135,11 +135,51 @@ public sealed class HyperionEndToEndTests(HyperionServerFixture fixture)
         Assert.True(client.IsConnected, "The picture came back over the same connection, not a new one.");
     }
 
+    [Theory]
+    [InlineData(0, 6)] // Letterbox: a 2.67:1 film in a 16:9 picture.
+    [InlineData(8, 0)] // Pillarbox: 4:3 in 16:9.
+    public async Task BlackBars_AreCutOffByHyperion_SoTheEdgeLedsShowThePicture(int barWidth, int barHeight)
+    {
+        fixture.SkipIfUnavailable();
+        await using var api = await fixture.ConnectApiAsync(Ct);
+        await using var client = await HyperionClient.ConnectAsync(fixture.ClientOptions, NullLogger.Instance, Ct);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        // Without black bar detection the LEDs at the barred edges would be black.
+        var streaming = StreamFrameAsync(client, BarredFrame(barWidth, barHeight), stop.Token);
+        var colors = await ReadLedColorsUntilAsync(api, First, EdgeColors);
+        await stop.CancelAsync();
+        await streaming;
+
+        Assert.Equal(EdgeColors, colors.Select(ColorName));
+    }
+
+    /// <summary>The test pattern inside black bars on two sides, like a film whose shape differs from the picture's.</summary>
+    private static byte[] BarredFrame(int barWidth, int barHeight)
+    {
+        var (width, height) = (FrameWidth - (2 * barWidth), FrameHeight - (2 * barHeight));
+        var picture = new byte[width * height * 3];
+        TestPattern.Render(picture, width, height, phase: 0);
+        var frame = new byte[FrameWidth * FrameHeight * 3];
+        for (var y = 0; y < height; y++)
+        {
+            picture.AsSpan(y * width * 3, width * 3).CopyTo(frame.AsSpan((((barHeight + y) * FrameWidth) + barWidth) * 3));
+        }
+
+        return frame;
+    }
+
     /// <summary>Sends the test pattern with its marker in the top-left corner, away from the sampled edge middles, at 10 fps.</summary>
-    private static async Task StreamStillFrameAsync(HyperionClient client, CancellationToken cancellationToken)
+    private static Task StreamStillFrameAsync(HyperionClient client, CancellationToken cancellationToken)
     {
         var frame = new byte[FrameWidth * FrameHeight * 3];
         TestPattern.Render(frame, FrameWidth, FrameHeight, phase: 0);
+        return StreamFrameAsync(client, frame, cancellationToken);
+    }
+
+    /// <summary>Sends one frame over and over at 10 fps.</summary>
+    private static async Task StreamFrameAsync(HyperionClient client, byte[] frame, CancellationToken cancellationToken)
+    {
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
         try
         {

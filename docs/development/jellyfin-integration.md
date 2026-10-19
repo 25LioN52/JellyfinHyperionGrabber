@@ -91,6 +91,9 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
   `ILibraryManager.GetItemById(itemId)`, then `IMediaSourceManager.GetStaticMediaSources(item, false)` (same signature
   in 10.11 and 12). It picks the source whose id matches the reported `MediaSourceId` (with or without dashes),
   otherwise the first (default) one, and takes size, codec and dynamic range from its first video stream.
+- The size is the display size: for anamorphic video (`MediaStream.IsAnamorphic`, or unknown and a shape more than
+  5 % off) the width becomes height × `MediaStream.AspectRatio` (`16:9`, `2.40:1`, ...), so a 16:9 DVD stored at
+  720×576 is decoded as 1024×576 and sent as 160×90 ([ADR 0013](adr/0013-black-bars-and-aspect-ratio.md)).
 - The dynamic range comes from `MediaStream.VideoRangeType`, which Jellyfin computes from the color transfer, the
   Dolby Vision profile and the base-layer compatibility id (`Jellyfin.Data.Enums`, the same in 10.11 and 12):
   `HDR10`, `HDR10Plus`, `DOVIWithHDR10(Plus)` and `DOVIWithEL(HDR10Plus)` are PQ; `HLG` and `DOVIWithHLG` are HLG;

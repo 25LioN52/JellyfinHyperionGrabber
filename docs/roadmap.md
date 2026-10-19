@@ -40,7 +40,8 @@ Milestones are deliberately small so each one ships something usable. Items beco
 
 - [x] HDR10 / HLG tone mapping to SDR; Dolby Vision (including profile 5) color handling
       ([ADR 0012](development/adr/0012-hdr-tone-mapping.md))
-- [ ] Anamorphic and letterboxed sources
+- [x] Anamorphic and letterboxed sources: the display aspect ratio is sent; black bars are left to Hyperion's
+      detector ([ADR 0013](development/adr/0013-black-bars-and-aspect-ratio.md))
 - [ ] Multiple targets: map devices to different Hyperion servers or instances (one per TV)
 
 ## M4: Polish

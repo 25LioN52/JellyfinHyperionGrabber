@@ -59,6 +59,12 @@ When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` t
 mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
 hardware decoding for the video's codec in Jellyfin.
 
+## The LEDs at the top and bottom stay dark with widescreen films
+
+Those LEDs show the black bars of the film. Turn on Hyperion's **Blackbar detector** (HyperHDR has it off by default)
+for every instance; see [Black bars](hyperion-setup.md#black-bars-widescreen-films). If it is on and the bars are not
+detected, raise its **Threshold** a little: some encodes have dark grey instead of black bars.
+
 ## Colors look pale or wrong with HDR movies
 
 The **Picture** line of the [status](configuration.md#status) and the log line after `Streaming 160x90 …` show how the
