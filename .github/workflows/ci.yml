@@ -86,12 +86,25 @@ jobs:
           path: TestResults
           if-no-files-found: ignore
 
-  e2e-hyperion-ng:
-    name: End-to-end (Hyperion.ng)
-    # A real Hyperion.ng from its official APT repository, in Docker (tests/e2e/hyperion-ng). The tests check the
-    # server's priority list and the colors it sends to each instance's LEDs over JSON-RPC (docs/development/testing.md).
+  e2e:
+    name: End-to-end (${{ matrix.server }})
+    # A real Hyperion.ng (official APT repository) and HyperHDR (official release package), each in Docker
+    # (tests/e2e/<image>). The tests check the server's priority list and the colors each instance computes for its
+    # LEDs over JSON-RPC (docs/development/testing.md).
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: Hyperion.ng
+            image: hyperion-ng
+            package: hyperion
+          - server: HyperHDR
+            image: hyperhdr
+            package: hyperhdr
+    env:
+      IMAGE: ${{ matrix.image }}-e2e
     steps:
       - uses: actions/checkout@v7
 
@@ -100,11 +113,14 @@ jobs:
           dotnet-version: 9.0.x
           global-json-file: global.json
 
-      - name: Start Hyperion.ng
+      - name: Start ${{ matrix.server }}
+        env:
+          CONTEXT: tests/e2e/${{ matrix.image }}
+          PACKAGE: ${{ matrix.package }}
         run: |
-          docker build --pull -t hyperion-ng-e2e tests/e2e/hyperion-ng
-          docker run -d --name hyperion-ng-e2e -p 127.0.0.1:19400:19400 -p 127.0.0.1:19444:19444 hyperion-ng-e2e
-          echo "Testing against $(docker run --rm --entrypoint dpkg-query hyperion-ng-e2e --show --showformat '${Package} ${Version}' hyperion)" >> "$GITHUB_STEP_SUMMARY"
+          docker build --pull -t "$IMAGE" "$CONTEXT"
+          docker run -d --name "$IMAGE" -p 127.0.0.1:19400:19400 -p 127.0.0.1:19444:19444 "$IMAGE"
+          echo "Testing against $(docker run --rm --entrypoint dpkg-query "$IMAGE" --show --showformat '${Package} ${Version}' "$PACKAGE")" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build tests
         run: dotnet build tests/Jellyfin.Plugin.HyperionGrabber.Core.Tests -c Release
@@ -133,15 +149,19 @@ jobs:
             }
           }
 
-      - name: Hyperion.ng log
+      - name: ${{ matrix.server }} log
         if: always()
-        run: docker logs hyperion-ng-e2e 2>&1 | tail -n 300
+        # The end here, the whole log in the uploaded test results.
+        run: |
+          mkdir -p TestResults
+          docker logs "$IMAGE" > "TestResults/$IMAGE.log" 2>&1
+          tail -n 300 "TestResults/$IMAGE.log"
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-e2e-hyperion-ng
+          name: test-results-e2e-${{ matrix.image }}
           path: TestResults
           if-no-files-found: ignore
 

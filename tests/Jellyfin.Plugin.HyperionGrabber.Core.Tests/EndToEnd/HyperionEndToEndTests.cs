@@ -11,17 +11,18 @@ using Xunit;
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Tests.EndToEnd;
 
 /// <summary>
-/// Our <see cref="HyperionClient"/> against a real Hyperion.ng, checked from the inside over JSON-RPC: the priority
-/// list (<c>serverinfo</c>) and the colors each instance sends to its LEDs (<c>getLedSnapshot</c>).
+/// Our <see cref="HyperionClient"/> against a real Hyperion.ng or HyperHDR, checked from the inside over JSON-RPC:
+/// the priority list (<c>serverinfo</c>) and the colors each instance computes for its LEDs
+/// (<see cref="HyperionServerApi.GetLedColorsAsync"/>).
 /// </summary>
-[Collection(SharedHyperionNg.Name)]
-public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
+[Collection(SharedHyperionServer.Name)]
+public sealed class HyperionEndToEndTests(HyperionServerFixture fixture)
 {
-    private const int First = HyperionNgFixture.FirstInstance;
+    private const int First = HyperionServerFixture.FirstInstance;
     private const int FrameWidth = 64;
     private const int FrameHeight = 36;
 
-    /// <summary>The test pattern at the middle of each edge, in <see cref="HyperionNgFixture.EdgeRegions"/> order.</summary>
+    /// <summary>The test pattern at the middle of each edge, in <see cref="HyperionServerFixture.EdgeRegions"/> order.</summary>
     private static readonly string[] EdgeColors = ["red", "green", "blue", "yellow"];
 
     /// <summary>The same regions in reverse order, as the second instance's LEDs sample them.</summary>
@@ -134,22 +135,6 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
         Assert.True(client.IsConnected, "The picture came back over the same connection, not a new one.");
     }
 
-    /// <summary>Streams the still frame until an instance's LEDs show the expected colors.</summary>
-    private static async Task<IReadOnlyList<Rgb>> StreamUntilLedColorsAsync(HyperionClient client, HyperionJsonRpc api, int instance, IEnumerable<string> expected)
-    {
-        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        var streaming = StreamStillFrameAsync(client, stop.Token);
-        try
-        {
-            return await ReadLedColorsUntilAsync(api, instance, expected);
-        }
-        finally
-        {
-            await stop.CancelAsync();
-            await streaming;
-        }
-    }
-
     /// <summary>Sends the test pattern with its marker in the top-left corner, away from the sampled edge middles, at 10 fps.</summary>
     private static async Task StreamStillFrameAsync(HyperionClient client, CancellationToken cancellationToken)
     {
@@ -168,18 +153,6 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
         {
             // The test has seen what it needed.
         }
-    }
-
-    /// <summary>Reads an instance's LED colors until they match (smoothing fades in, a starting instance needs a moment).</summary>
-    private static async Task<IReadOnlyList<Rgb>> ReadLedColorsUntilAsync(HyperionJsonRpc api, int instance, IEnumerable<string> expected)
-    {
-        var colors = await Eventually.ReachAsync(
-            () => api.GetLedColorsAsync(instance, Ct),
-            leds => leds.Select(ColorName).SequenceEqual(expected),
-            Timeout,
-            leds => Describe(instance, leds));
-        Output(Describe(instance, colors));
-        return colors;
     }
 
     /// <summary>Names a color by the channels that are on, which survives Hyperion's gamma and brightness compensation.</summary>
@@ -210,8 +183,36 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
             ? $"instance {instance} LEDs: not updated within 1 s (nothing to show)"
             : $"instance {instance} LEDs: " + string.Join(", ", colors.Select(color => $"{ColorName(color)} ({color.R},{color.G},{color.B})"));
 
+    /// <summary>Streams the still frame until an instance's LEDs show the expected colors.</summary>
+    private async Task<IReadOnlyList<Rgb>> StreamUntilLedColorsAsync(HyperionClient client, HyperionServerApi api, int instance, IEnumerable<string> expected)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var streaming = StreamStillFrameAsync(client, stop.Token);
+        try
+        {
+            return await ReadLedColorsUntilAsync(api, instance, expected);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await streaming;
+        }
+    }
+
+    /// <summary>Reads an instance's LED colors until they match (smoothing fades in, a starting instance needs a moment).</summary>
+    private async Task<IReadOnlyList<Rgb>> ReadLedColorsUntilAsync(HyperionServerApi api, int instance, IEnumerable<string> expected)
+    {
+        var colors = await Eventually.ReachAsync(
+            () => api.GetLedColorsAsync(instance, Ct),
+            leds => leds.Select(ColorName).SequenceEqual(expected),
+            Timeout,
+            leds => Describe(instance, leds));
+        Output(Describe(instance, colors));
+        return colors;
+    }
+
     /// <summary>Records what the real server reported in the test output (and the TRX file), for reviews.</summary>
-    private static void Output(string line) => TestContext.Current.TestOutputHelper?.WriteLine(line);
+    private void Output(string line) => TestContext.Current.TestOutputHelper?.WriteLine($"{fixture.Server?.Version}: {line}");
 
     private HyperionPriorityInfo? Ours(IReadOnlyList<HyperionPriorityInfo> priorities)
         => priorities.SingleOrDefault(priority => priority.Priority == fixture.ClientOptions.Priority);

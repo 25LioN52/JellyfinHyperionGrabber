@@ -80,7 +80,7 @@ of 1 s or more ([ADR 0008](adr/0008-streaming-session-pacing.md)).
 **Images vs LED count.** Hyperion averages the picture regions configured in its LED layout, so a small picture
 (around 64-160 px wide) is enough and keeps CPU use on the Hyperion side low. Keep the source aspect ratio.
 
-**Origin.** Hyperion.ng lists a FlatBuffers client as `<origin>@<client address>` with component `FLATBUFSERVER`;
+**Origin.** Both servers list a FlatBuffers client as `<origin>@<client address>` with component `FLATBUFSERVER`;
 the address comes from Qt's dual-stack socket, so IPv4 clients appear as `::ffff:a.b.c.d`.
 
 ## Multiple instances
@@ -100,7 +100,7 @@ instance receives every client's registration, images and clears:
   instance started later joins with the next frame.
 
 So one plugin connection drives a WLED instance and a Hue instance together, each through its own LED layout,
-smoothing and calibration; priorities are per instance. The end-to-end tests verify this on Hyperion.ng, including
+smoothing and calibration; priorities are per instance. The end-to-end tests verify this on both servers, including
 that the picture comes back after the remote control clears our priority.
 
 ## Our codec
@@ -143,6 +143,6 @@ Example, `Clear { priority: 150 }`, which is also the golden-bytes test:
 - The harness verifies itself against buffers from the official builder. Google.FlatBuffers 25.2.10's
   `Verifier.VerifyUnion` passes a wrong type id to its callback, so the harness verifies unions as "type field, then
   `VerifyTable` on the value".
-- End-to-end tests run our client against a real Hyperion.ng (official APT package, in Docker) and read the result
-  back over its JSON-RPC API: the priority list and the colors each instance sends to its LEDs
-  ([Testing](testing.md#end-to-end-tests-against-hyperionng)).
+- End-to-end tests run our client against a real Hyperion.ng (official APT package) and HyperHDR (official release
+  package), each in Docker, and read the result back over their JSON-RPC API: the priority list and the colors each
+  instance computes for its LEDs ([Testing](testing.md#end-to-end-tests-against-hyperionng-and-hyperhdr)).
