@@ -91,7 +91,16 @@ public sealed class HyperHdrApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
         var device = settings["device"]!.AsObject();
         device["output"] = "/dev/null";
         device["hardwareLedCount"] = regions.Count;
-        settings["foregroundEffect"]!["enable"] = false;
+
+        // HyperHDR 22 returned the settings of a newly created instance without foregroundEffect; setconfig fills in
+        // the defaults of anything missing (its log shows them as "Config Fix").
+        if (settings["foregroundEffect"] is not JsonObject effect)
+        {
+            effect = new JsonObject();
+            settings["foregroundEffect"] = effect;
+        }
+
+        effect["enable"] = false;
 
         await SendToInstanceAsync(
             instance,

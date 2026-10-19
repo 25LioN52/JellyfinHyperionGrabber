@@ -151,7 +151,11 @@ jobs:
 
       - name: ${{ matrix.server }} log
         if: always()
-        run: docker logs "$IMAGE" 2>&1 | tail -n 300
+        # The end here, the whole log in the uploaded test results.
+        run: |
+          mkdir -p TestResults
+          docker logs "$IMAGE" > "TestResults/$IMAGE.log" 2>&1
+          tail -n 300 "TestResults/$IMAGE.log"
 
       - name: Upload test results
         if: always()
