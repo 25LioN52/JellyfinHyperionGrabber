@@ -206,7 +206,9 @@ public sealed class HyperionNgEndToEndTests(HyperionNgFixture fixture)
     private static string Describe(IReadOnlyList<HyperionPriorityInfo> priorities) => "[" + string.Join(", ", priorities) + "]";
 
     private static string Describe(int instance, IReadOnlyList<Rgb> colors)
-        => $"instance {instance} LEDs: " + string.Join(", ", colors.Select(color => $"{ColorName(color)} ({color.R},{color.G},{color.B})"));
+        => colors.Count == 0
+            ? $"instance {instance} LEDs: not updated within 1 s (nothing to show)"
+            : $"instance {instance} LEDs: " + string.Join(", ", colors.Select(color => $"{ColorName(color)} ({color.R},{color.G},{color.B})"));
 
     /// <summary>Records what the real server reported in the test output (and the TRX file), for reviews.</summary>
     private static void Output(string line) => TestContext.Current.TestOutputHelper?.WriteLine(line);

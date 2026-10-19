@@ -123,12 +123,24 @@ public sealed class HyperionJsonRpc : IAsyncDisposable
         return priorities;
     }
 
-    /// <summary>Returns the colors the instance sends to its LED device next (after smoothing and calibration).</summary>
+    /// <summary>
+    /// Returns the colors the instance sends to its LED device next (after smoothing and calibration), or an empty list
+    /// when it did not update its LEDs within a second (nothing to show, for example after its last source was cleared).
+    /// </summary>
     public async Task<IReadOnlyList<Rgb>> GetLedColorsAsync(int instance, CancellationToken cancellationToken)
     {
-        var reply = await SendAsync(
-            new JsonObject { ["command"] = "instance-data", ["subcommand"] = "getLedSnapshot", ["instance"] = instance },
-            cancellationToken);
+        JsonElement reply;
+        try
+        {
+            reply = await SendAsync(
+                new JsonObject { ["command"] = "instance-data", ["subcommand"] = "getLedSnapshot", ["instance"] = instance },
+                cancellationToken);
+        }
+        catch (HyperionJsonRpcException ex) when (ex.Message.Contains("No LED color data available", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
         var colors = new List<Rgb>();
         foreach (var led in reply.GetProperty("info").GetProperty("leds").EnumerateArray())
         {
