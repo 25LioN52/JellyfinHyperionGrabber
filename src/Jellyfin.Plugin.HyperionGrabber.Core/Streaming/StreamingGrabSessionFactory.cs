@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
@@ -10,20 +12,20 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 
 /// <summary>
-/// Starts a <see cref="StreamingGrabSession"/> per playback: decodes the playing video with FFmpeg and streams it to
-/// Hyperion in step with the reported playback position.
+/// Starts a <see cref="StreamingGrabSession"/> per playback and target: decodes the playing video with FFmpeg and
+/// streams it to the target's Hyperion in step with the reported playback position.
 /// </summary>
 public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
 {
     private readonly Lock _gate = new();
-    private Task _previousHyperionReleased = Task.CompletedTask;
+    private readonly Dictionary<PlaybackTargetKey, Task> _hyperionReleased = [];
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamingGrabSessionFactory"/> class.
     /// </summary>
     /// <param name="resolver">Finds the video file of the playing item.</param>
     /// <param name="ffmpegSettings">The server's FFmpeg path and hardware acceleration.</param>
-    /// <param name="streamingSettings">Hyperion server and frame rate.</param>
+    /// <param name="streamingSettings">Frame rate, timing and Kodi settings.</param>
     /// <param name="timeProvider">Clock for pacing and timeouts.</param>
     /// <param name="loggerFactory">Logger factory.</param>
     public StreamingGrabSessionFactory(
@@ -49,7 +51,7 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
     /// </summary>
     /// <param name="resolver">Finds the video file of the playing item.</param>
     /// <param name="ffmpegSettings">The server's FFmpeg path and hardware acceleration.</param>
-    /// <param name="streamingSettings">Hyperion server and frame rate.</param>
+    /// <param name="streamingSettings">Frame rate, timing and Kodi settings.</param>
     /// <param name="timeProvider">Clock for pacing and timeouts.</param>
     /// <param name="loggerFactory">Logger factory.</param>
     /// <param name="startFrameSource">Starts decoding with validated options.</param>
@@ -101,15 +103,24 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
     internal ILogger SessionLogger { get; }
 
     /// <inheritdoc />
-    /// <remarks>A session connects to Hyperion only after the previous one released it (see
-    /// <see cref="StreamingGrabSession.HyperionReleased"/>), so they never share the priority.</remarks>
-    public IGrabSession Start(PlaybackState state)
+    /// <remarks>A session connects to Hyperion only after the previous session of the same server and priority
+    /// released it (see <see cref="StreamingGrabSession.HyperionReleased"/>), so they never share the priority.
+    /// Sessions of other targets do not wait for each other.</remarks>
+    public IGrabSession Start(PlaybackState state, PlaybackTarget target)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(target);
         lock (_gate)
         {
-            var session = StreamingGrabSession.Start(this, state, _previousHyperionReleased);
-            _previousHyperionReleased = session.HyperionReleased;
+            // Released servers need no waiting; forgetting them keeps edited targets from piling up.
+            foreach (var released in _hyperionReleased.Where(pair => pair.Value.IsCompleted).Select(pair => pair.Key).ToList())
+            {
+                _hyperionReleased.Remove(released);
+            }
+
+            var previous = _hyperionReleased.GetValueOrDefault(target.Key, Task.CompletedTask);
+            var session = StreamingGrabSession.Start(this, state, target, previous);
+            _hyperionReleased[target.Key] = session.HyperionReleased;
             return session;
         }
     }

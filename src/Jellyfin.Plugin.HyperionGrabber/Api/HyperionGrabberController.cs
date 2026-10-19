@@ -48,17 +48,15 @@ public class HyperionGrabberController : ControllerBase
     }
 
     /// <summary>
-    /// Describes what the lights are doing: the followed playback, the connection to Hyperion, the frame rate and
-    /// the last problem. The configuration page polls it while it is open.
+    /// Describes what the lights are doing, for each Hyperion server: the followed playback, the connection to
+    /// Hyperion, the frame rate and the last problem. The configuration page polls it while it is open.
     /// </summary>
     /// <returns>The status.</returns>
     [HttpGet("Status")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<StatusResponse> GetStatus()
     {
-        var status = _status.GetStatus();
-        var itemName = status.Playback is { } playback ? _libraryManager.GetItemById(playback.ItemId)?.Name : null;
-        return Ok(StatusResponse.From(status, itemName));
+        return Ok(StatusResponse.From(_status.GetStatus(), itemId => _libraryManager.GetItemById(itemId)?.Name));
     }
 
     /// <summary>

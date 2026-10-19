@@ -64,23 +64,26 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `KodiClock`, `KodiJsonRpcConnection`, `JsonObjectSplitter` | For Kodi clients: reads the position from Kodi over JSON-RPC (TCP 9090) every 2 s and on player notifications; readings go to the `PositionTracker` once they agree with the reports ([ADR 0011](adr/0011-kodi-clock.md)) |
 | `PositionTracker` | Estimates the playback position from reports of different precision: a range that every agreeing report narrows ([ADR 0009](adr/0009-position-tracking.md)) |
 | `PlaybackEvent`, `PlaybackState` | Host-independent playback report (start/progress/stop, session, device, user, item, media source, position, paused) and the state a session sees, time-stamped with `ReportedAt` |
-| `PlaybackFilter` | Enabled switch, selected device ids (none = nothing matches), selected user ids (none = every user) |
-| `PlaybackMonitor` | Non-blocking `Post`/`UpdateFilter` into a bounded queue (256, drop oldest); one processing task owns all state and decides which playback drives the target |
-| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state)`, `Update(state)`, `GetStatus()`, `DisposeAsync()`; implemented by `StreamingGrabSessionFactory` |
-| `IPlaybackStatusSource`, `PlaybackMonitorStatus`, `GrabSessionStatus` | Snapshot for the status panel: filter, followed playback, the session's phase, frame rate, counters, decoder, current and last problem |
+| `PlaybackTarget`, `PlaybackTargetKey` (M3) | A Hyperion server and priority with its own selected device ids; the key (host ignoring case, port, priority) identifies it ([ADR 0014](adr/0014-multiple-targets.md)) |
+| `PlaybackFilter` | Enabled switch, the targets (unique keys, at most 8), selected user ids (none = every user) |
+| `PlaybackMonitor` | Non-blocking `Post`/`UpdateFilter` into a bounded queue (256, drop oldest); one processing task owns all state and decides which playback drives each target |
+| `IGrabSessionFactory`, `IGrabSession` | Seam for the streaming pipeline: `Start(state, target)`, `Update(state)`, `GetStatus()`, `DisposeAsync()`; implemented by `StreamingGrabSessionFactory` |
+| `IPlaybackStatusSource`, `PlaybackMonitorStatus`, `TargetStatus`, `GrabSessionStatus` | Snapshot for the status panel: filter, and per target its followed playback, the session's phase, frame rate, counters, decoder, current and last problem |
 | `PlaybackMonitorService` (plugin) | `IHostedService` that subscribes to `ISessionManager.PlaybackStart/Progress/Stopped`, maps them with `PlaybackEventMapper` and feeds the saved filter (`IPlaybackFilterSource`) |
 
 Rules the monitor implements:
 
-- **One session per target.** There is one Hyperion target today, so at most one `IGrabSession` runs. Of all matching
-  playbacks, the most recently started one drives it; when it stops, the most recent remaining one takes over with
-  its last reported state. Multiple targets (M3) will make this decision per target.
+- **One session per target.** Targets are independent. For each, of all playbacks that match it (its devices, the
+  filter's users), the most recently started one drives it; when it stops, the most recent remaining one takes over
+  with its last reported state. A playback on a device selected for two targets drives both. A target whose key
+  changes (server, port or priority) is a new target and its session restarts; a rename keeps it. Sessions that end
+  together are disposed at the same time. Last problems are kept per target.
 - A progress report without a position keeps the estimated position (last report + elapsed), so it never looks like
   a seek to the start.
 - A progress report for an unknown session counts as a start (playback that began before Jellyfin or the plugin
   started, or a device that was just selected). A report with a different item restarts the session.
-- A filter change is applied immediately: sessions that no longer match are disposed, playing sessions that now
-  match start.
+- A filter change is applied immediately: sessions that no longer match (or whose target is gone) are disposed,
+  playing sessions that now match start.
 - Tracked playbacks are capped at 64 (least recently reported forgotten first), so lost stop events cannot grow
   memory.
 - A session that throws is logged and does not stop the monitor; the next report retries the start.
@@ -90,7 +93,7 @@ Rules the monitor implements:
 ```mermaid
 flowchart LR
     Events["Jellyfin session events"] --> Monitor["PlaybackMonitor<br/>(filter devices/users)"]
-    Monitor -->|start/update/stop| Session["StreamingGrabSession<br/>(one per target)"]
+    Monitor -->|"start/update/stop, per target"| Session["StreamingGrabSession<br/>(one per target)"]
     Session -->|"item + media source id"| Resolver["IVideoInputResolver<br/>(file: path, size, codec)"]
     Session --> Source["FfmpegFrameSource<br/>-ss pos, HW decode, GPU scale, rgb24"]
     Source -->|"pooled frames + positions"| Session
@@ -100,9 +103,9 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `StreamingGrabSessionFactory` | `IGrabSessionFactory` for real streaming; its internal constructor takes the frame source and Hyperion connection as delegates so tests can replace them |
-| `StreamingGrabSession` | One playback: reads the settings, resolves the video, starts FFmpeg at the estimated position, connects to Hyperion and paces frames ([ADR 0008](adr/0008-streaming-session-pacing.md)) |
+| `StreamingGrabSession` | One playback on one target: reads the settings, resolves the video, starts FFmpeg at the estimated position, connects to the target's Hyperion and paces frames ([ADR 0008](adr/0008-streaming-session-pacing.md)) |
 | `IVideoInputResolver` / `JellyfinVideoInputResolver` | Playing item + media source id → `VideoInput` (`file:` path, display size, codec), or the reason it is not supported (Live TV, remote, `.strm`, disc folders) |
-| `IStreamingSettingsProvider` / `PluginStreamingSettingsProvider` | Hyperion host/port/priority and frame rate from the saved configuration, read once per playback start |
+| `IStreamingSettingsProvider` / `PluginStreamingSettingsProvider` | Frame rate, timing and Kodi settings from the saved configuration, read once per playback start; the Hyperion server comes with the target |
 | `IFrameSource`, `IHyperionConnection` (internal) | The parts of `FfmpegFrameSource` and `HyperionClient` the session uses; fakes implement them in tests |
 
 How a session behaves:
@@ -138,7 +141,8 @@ How a session behaves:
 - **Stop and failures:** stopping or a decoding error kills FFmpeg and disposes the Hyperion client (which clears the
   priority) in parallel. A connect still in flight is cancelled and its connection, should it still open, closed at
   once. `DisposeAsync` waits at most 5 s, so the monitor never stalls. A new session connects only after the previous
-  one released Hyperion (at most 5 s more), so two sessions never hold the same priority.
+  session of the same server and priority released it (at most 5 s more), so two sessions never hold the same
+  priority; sessions of other targets do not wait.
 - **Logging:** Information for start (`Streaming 160x90 at 25 fps …`), stop (frames sent, dropped, decoder
   restarts) and a reconnect (attempts, downtime), one Warning per Hyperion outage, Debug for each failed connect
   attempt (with the next delay), seeks, pause changes and position reports (how far each moved the estimate, and the
@@ -163,7 +167,7 @@ followed playback when a session starts or stops and keeps the last problem of a
 page polls `GET HyperionGrabber/Status` every 2 s while it is shown and the browser tab is visible, one request at a
 time, and stops when the page is left. All values are set as text (device and item names come from clients).
 
-Still planned: a per-device timing offset (M2) and multiple targets (M3). See the [roadmap](../roadmap.md).
+Still planned: a per-device timing offset (M2). See the [roadmap](../roadmap.md).
 
 ## Threading
 

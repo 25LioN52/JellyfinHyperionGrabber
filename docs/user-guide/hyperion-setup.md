@@ -138,6 +138,20 @@ appears in the bars unless subtitles are burned into the video. HDR films keep b
 16:9 DVDs) in the shape the TV shows. This is tested automatically against Hyperion.ng and HyperHDR with
 letterboxed and pillarboxed pictures.
 
+## Several TVs
+
+The plugin sends one TV's picture to one Hyperion server. For LEDs on two TVs, run **one Hyperion.ng or HyperHDR server
+per TV**, then add the second one on the plugin page under [More TVs](configuration.md#more-tvs):
+
+- **A Raspberry Pi (or any device) per TV**, each running Hyperion with that TV's LEDs. Enter each one's address.
+- **Two Hyperion containers on one machine**, for example on a NAS. Give the second container other ports: with
+  bridge networking map its container ports to free host ports (for example `19401:19400`, `8091:8090` and
+  `19445:19444`); with host networking change its ports under **Network Services** in its web UI. Enter the host with
+  port `19401` in the plugin.
+
+Two **instances** of one server cannot serve two TVs: every running instance shows the same picture (see
+[Several devices at once](#several-devices-at-once)). Use instances for several LED devices on the same TV.
+
 ## Color and smoothing
 
 Brightness, color calibration, gamma, smoothing and black bar detection are Hyperion settings and apply to the

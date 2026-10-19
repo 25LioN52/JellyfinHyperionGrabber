@@ -75,7 +75,7 @@ public sealed class StreamingReconnectTests : IAsyncDisposable
 
     private async Task<StreamingGrabSession> StartAsync()
     {
-        var host = new Host(_server);
+        var host = new Host();
         var factory = new StreamingGrabSessionFactory(
             host,
             host,
@@ -100,7 +100,8 @@ public sealed class StreamingReconnectTests : IAsyncDisposable
             IsStart = true,
             ReportedAt = _time.GetUtcNow(),
         };
-        _session = Assert.IsType<StreamingGrabSession>(factory.Start(state));
+        var target = PlaybackTarget.Create("TV", new HyperionClientOptions { Host = _server.Host, Port = _server.Port }, ["kodi"]);
+        _session = Assert.IsType<StreamingGrabSession>(factory.Start(state, target));
         Assert.True(await _session.StreamingStarted.WaitAsync(Ct));
         var source = _sources.Single();
         source.Push(5);
@@ -126,17 +127,13 @@ public sealed class StreamingReconnectTests : IAsyncDisposable
         }
     }
 
-    private sealed class Host(FakeHyperionServer server) : IVideoInputResolver, IFfmpegSettingsProvider, IStreamingSettingsProvider
+    private sealed class Host : IVideoInputResolver, IFfmpegSettingsProvider, IStreamingSettingsProvider
     {
         public VideoInputResult Resolve(Guid itemId, string? mediaSourceId)
             => VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
 
         public FfmpegSettings GetSettings() => new() { FfmpegPath = "ffmpeg" };
 
-        StreamingSettings IStreamingSettingsProvider.GetSettings() => new()
-        {
-            Hyperion = new HyperionClientOptions { Host = server.Host, Port = server.Port },
-            FramesPerSecond = 10,
-        };
+        StreamingSettings IStreamingSettingsProvider.GetSettings() => new() { FramesPerSecond = 10 };
     }
 }

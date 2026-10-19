@@ -86,11 +86,42 @@ public sealed class StreamingIntegrationTests(FfmpegFixture ffmpeg) : IClassFixt
         Assert.Equal(HyperionDefaults.Priority, clear.Priority);
     }
 
-    private static PlaybackEvent Event(PlaybackEventKind kind, TimeSpan? position, bool paused = false) => new()
+    [Fact]
+    public async Task TwoTvs_EachHyperionGetsItsOwnPlayback()
+    {
+        ffmpeg.SkipIfUnavailable();
+        await using var bedroomServer = FakeHyperionServer.Start();
+        var monitor = StartMonitor();
+        monitor.UpdateFilter(PlaybackFilter.Create(
+            true,
+            [
+                PlaybackTarget.Create("Living room", new HyperionClientOptions { Host = _server.Host, Port = _server.Port }, ["kodi"]),
+                PlaybackTarget.Create("Bedroom", new HyperionClientOptions { Host = bedroomServer.Host, Port = bedroomServer.Port }, ["shield"]),
+            ],
+            []));
+
+        // The living room pauses on green, the bedroom on white: each server shows its own TV's picture.
+        monitor.Post(Event(PlaybackEventKind.Started, TimeSpan.FromSeconds(1.5), paused: true));
+        monitor.Post(Event(PlaybackEventKind.Started, TimeSpan.FromSeconds(3.5), paused: true, sessionId: "bedroom", deviceId: "shield"));
+        await _server.NextRequestAsync<RegisterRequest>();
+        await bedroomServer.NextRequestAsync<RegisterRequest>();
+        AssertImage(await _server.NextRequestAsync<ImageRequest>(), FfmpegFixture.Colors[1]);
+        AssertImage(await bedroomServer.NextRequestAsync<ImageRequest>(), FfmpegFixture.Colors[3]);
+
+        // Stopping the living room releases only its server; the bedroom keeps streaming (keep-alives while paused).
+        monitor.Post(Event(PlaybackEventKind.Stopped, null));
+        await NextClearAsync();
+        var bedroom = await bedroomServer.NextRequestAsync();
+
+        Assert.IsType<ImageRequest>(bedroom);
+        Assert.Equal(1, bedroomServer.ConnectionCount);
+    }
+
+    private static PlaybackEvent Event(PlaybackEventKind kind, TimeSpan? position, bool paused = false, string sessionId = "session", string deviceId = "kodi") => new()
     {
         Kind = kind,
-        SessionId = "session",
-        DeviceId = "kodi",
+        SessionId = sessionId,
+        DeviceId = deviceId,
         DeviceName = "Living room",
         Client = "Kodi",
         ItemId = Movie,
@@ -139,23 +170,20 @@ public sealed class StreamingIntegrationTests(FfmpegFixture ffmpeg) : IClassFixt
 
     private PlaybackMonitor StartMonitor()
     {
-        var host = new Host(new VideoInput("file:" + ffmpeg.ClipPath, FfmpegFixture.ClipWidth, FfmpegFixture.ClipHeight, null), ffmpeg.FfmpegPath!, _server);
+        var host = new Host(new VideoInput("file:" + ffmpeg.ClipPath, FfmpegFixture.ClipWidth, FfmpegFixture.ClipHeight, null), ffmpeg.FfmpegPath!);
         var factory = new StreamingGrabSessionFactory(host, host, host, TimeProvider.System, NullLoggerFactory.Instance);
         _monitor = new PlaybackMonitor(factory, TimeProvider.System, NullLogger<PlaybackMonitor>.Instance);
         _monitor.Start();
-        _monitor.UpdateFilter(PlaybackFilter.Create(true, ["kodi"], []));
+        _monitor.UpdateFilter(TestFilters.OneTarget(true, ["kodi"], [], new HyperionClientOptions { Host = _server.Host, Port = _server.Port }));
         return _monitor;
     }
 
-    private sealed class Host(VideoInput video, string ffmpegPath, FakeHyperionServer server) : IVideoInputResolver, IFfmpegSettingsProvider, IStreamingSettingsProvider
+    private sealed class Host(VideoInput video, string ffmpegPath) : IVideoInputResolver, IFfmpegSettingsProvider, IStreamingSettingsProvider
     {
         public VideoInputResult Resolve(Guid itemId, string? mediaSourceId) => VideoInputResult.Supported(video);
 
         public FfmpegSettings GetSettings() => new() { FfmpegPath = ffmpegPath };
 
-        StreamingSettings IStreamingSettingsProvider.GetSettings() => new()
-        {
-            Hyperion = new HyperionClientOptions { Host = server.Host, Port = server.Port },
-        };
+        StreamingSettings IStreamingSettingsProvider.GetSettings() => new();
     }
 }

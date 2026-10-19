@@ -59,6 +59,13 @@ When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` t
 mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
 hardware decoding for the video's codec in Jellyfin.
 
+## Two TVs show the same picture
+
+The two TVs' LEDs are two instances of one Hyperion server: every running instance gets the same picture. Run a
+second Hyperion server for the second TV and add it under **More TVs**; see
+[Several TVs](hyperion-setup.md#several-tvs). If they already are two servers, check which devices are ticked for each
+one on the plugin page: a device ticked for both drives both.
+
 ## The LEDs at the top and bottom stay dark with widescreen films
 
 Those LEDs show the black bars of the film. Turn on Hyperion's **Blackbar detector** (HyperHDR has it off by default)
