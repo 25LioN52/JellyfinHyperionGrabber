@@ -67,6 +67,27 @@ of 1 s or more ([ADR 0008](adr/0008-streaming-session-pacing.md)).
 **Images vs LED count.** Hyperion averages the picture regions configured in its LED layout, so a small picture
 (around 64-160 px wide) is enough and keeps CPU use on the Hyperion side low. Keep the source aspect ratio.
 
+**Origin.** Hyperion.ng lists a FlatBuffers client as `<origin>@<client address>` with component `FLATBUFSERVER`;
+the address comes from Qt's dual-stack socket, so IPv4 clients appear as `::ffff:a.b.c.d`.
+
+## Multiple instances
+
+Both servers run **one** FlatBuffers server for all instances (one instance per LED device), and every running
+instance receives every client's registration, images and clears:
+
+- **Hyperion.ng 2.2** (`FlatBufferServer.cpp`, `Hyperion.cpp`, `hyperiond.cpp`): the client connection emits
+  `registerGlobalInput` / `setGlobalInputImage` / `clearGlobalInput` on `GlobalSignals`, and every `Hyperion` instance
+  connects to them. When an instance starts while clients are connected, `HyperionDaemon` calls
+  `FlatBufferServer::registerClients`, so it shows the stream at once. An instance that gets an image for a priority it
+  does not know asks for a re-registration with a reply `registered = -1` (we ignore it; `registerClients` makes it
+  unnecessary). When the last instance stops, the server closes and drops all connections.
+- **HyperHDR 22** (`FlatBuffersServer.cpp`, `HyperHdrInstance.cpp`): images go to `GlobalSignals::SignalSetGlobalImage`,
+  which every `HyperHdrInstance` handles; an instance registers the priority on the first image it receives, so an
+  instance started later joins with the next frame.
+
+So one plugin connection drives a WLED instance and a Hue instance together, each through its own LED layout,
+smoothing and calibration; priorities are per instance. The end-to-end tests verify this on Hyperion.ng.
+
 ## Our codec
 
 `HyperionRequestWriter` uses the tiny `FlatBufferWriter` instead of the official FlatBuffers runtime, which keeps the
@@ -107,4 +128,6 @@ Example, `Clear { priority: 150 }`, which is also the golden-bytes test:
 - The harness verifies itself against buffers from the official builder. Google.FlatBuffers 25.2.10's
   `Verifier.VerifyUnion` passes a wrong type id to its callback, so the harness verifies unions as "type field, then
   `VerifyTable` on the value".
-- *(planned, M1)* An end-to-end test against a real Hyperion.ng in a container.
+- End-to-end tests run our client against a real Hyperion.ng (official APT package, in Docker) and read the result
+  back over its JSON-RPC API: the priority list and the colors each instance sends to its LEDs
+  ([Testing](testing.md#end-to-end-tests-against-hyperionng)).

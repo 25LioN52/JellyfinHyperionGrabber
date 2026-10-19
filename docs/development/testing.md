@@ -12,7 +12,7 @@
 
 | Project | Covers |
 | --- | --- |
-| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames) and end-to-end streaming (real FFmpeg → fake server) |
+| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames), end-to-end streaming (real FFmpeg → fake server) and, in `EndToEnd/`, the client against a real Hyperion.ng |
 | `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour, media source resolution |
 | `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `TestHelpers` (shared, not a test project) |
 
@@ -49,6 +49,51 @@ throttling and that the process is killed.
   Linux) and run `dotnet test --solution Jellyfin.Plugin.HyperionGrabber.slnx -c Release -- --filter-method "*WithConfiguredHardware*"`.
   Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this.
 
+## End-to-end tests against Hyperion.ng
+
+`EndToEnd/HyperionNgEndToEndTests` run `HyperionClient` and `TestPatternPlayer` against a real Hyperion.ng and look
+inside it over its JSON-RPC API (TCP 19444, `HyperionJsonRpc`): the priority list (`serverinfo`) and the colors each
+instance sends to its LED device (`instance-data` / `getLedSnapshot`).
+
+| Test | Checks |
+| --- | --- |
+| `TestPattern_IsListedWithItsOriginWhilePlaying_AndClearedAfterwards` | While the pattern plays, priority 150 is listed as `FLATBUFSERVER`, origin `Grabber E2E@<address>`, active and visible; after the player's `Clear` it is gone while the connection is still open |
+| `TestPattern_LightsTheLedOfEachEdgeInThatEdgesColor` | LEDs sampling the middle of the top, right, bottom and left edge show red, green, blue and yellow: byte order and orientation of our `RawImage` |
+| `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
+| `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
+
+Colors are compared by which channels are on, because Hyperion's gamma, brightness compensation and smoothing
+change the values; reads are repeated until they match or 15 s pass (`Eventually`), since Hyperion handles the
+FlatBuffers and JSON-RPC connections independently.
+
+- **The server.** `tests/e2e/hyperion-ng/Dockerfile` installs the `hyperion` package from Hyperion's official APT
+  repository (Debian bookworm). The repository keeps only the current release, so CI always tests the version users
+  install; the job summary names it.
+- **CI.** The `End-to-end (Hyperion.ng)` job builds and starts the container, sets `HYPERION_GRABBER_E2E_HOST=127.0.0.1`
+  and runs the `EndToEnd` namespace for both builds one after the other (`--max-parallel-test-modules 1`), because
+  they share the server. Hyperion's log is printed after the tests.
+- **Skipped** everywhere else: without `HYPERION_GRABBER_E2E_HOST` the tests report as skipped.
+- **Preparation.** `HyperionNgFixture` logs in with the factory password `hyperion` (override with
+  `HYPERION_GRABBER_E2E_PASSWORD`), gives instance 0 four LEDs on Hyperion's `file` device, creates the instance
+  `Grabber E2E second instance` with the reverse layout, turns off the startup effect and waits for the one already
+  playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real setup.
+
+Run them locally with Docker:
+
+```bash
+docker build -t hyperion-ng-e2e tests/e2e/hyperion-ng
+docker run -d --rm --name hyperion-ng-e2e -p 127.0.0.1:19400:19400 -p 127.0.0.1:19444:19444 hyperion-ng-e2e
+HYPERION_GRABBER_E2E_HOST=127.0.0.1 dotnet test --project tests/Jellyfin.Plugin.HyperionGrabber.Core.Tests -c Release --max-parallel-test-modules 1 --filter-namespace "*.EndToEnd"
+docker stop hyperion-ng-e2e
+```
+
+In PowerShell set the variable with `$env:HYPERION_GRABBER_E2E_HOST = '127.0.0.1'` first. Other ports:
+`HYPERION_GRABBER_E2E_FLATBUFFERS_PORT` and `HYPERION_GRABBER_E2E_JSON_PORT`. Add `-p 127.0.0.1:8090:8090` to watch the
+web UI while the tests run.
+
+Not covered: real LED devices (the routing to instances does not depend on the device), HyperHDR, and Hyperion's
+idle timeout against the pause keep-alive.
+
 ## Kinds of tests and where they matter
 
 | Kind | Example | Why |
@@ -65,12 +110,10 @@ throttling and that the process is killed.
 
 - No fixed sleeps for synchronization (`TestHelpers.WaitUntilAsync`, awaitable fake server, `FakeTimeProvider`).
 - Fixed seeds for random data.
-- Network only on loopback with OS-assigned ports.
+- Network only on loopback with OS-assigned ports (the end-to-end tests use the container's mapped ports).
 - Pass `TestContext.Current.CancellationToken`.
 
 ## Planned
 
-- *(M1)* End-to-end test against a real Hyperion.ng container in CI: register, send the test pattern, read the
-  priority list over JSON-RPC.
 - *(M3)* FFmpeg tests with an HDR sample asserting tone-mapped colors.
 - *(M2)* Sync engine tests driven entirely by `FakeTimeProvider` and scripted playback events.

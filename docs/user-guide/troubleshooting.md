@@ -23,7 +23,9 @@ If the LEDs do not change at all while the test pattern reports success:
 - Another source with a **lower** priority number is active in Hyperion (for example a color set in the Hyperion
   app, priority 1-50). Clear it in Hyperion's dashboard, or lower the plugin's priority number.
 - The LED device in Hyperion is disabled or not connected; check that Hyperion's own effects work.
-- With several Hyperion instances, you are looking at an instance that does not receive the stream.
+- With several Hyperion instances: the instance is stopped (only running instances receive the picture), or a source
+  with a lower priority number is active on that instance only. See
+  [Several devices at once](hyperion-setup.md#several-devices-at-once).
 
 ## Playback is not recognized
 
