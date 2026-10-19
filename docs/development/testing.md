@@ -12,7 +12,7 @@
 
 | Project | Covers |
 | --- | --- |
-| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames), end-to-end streaming (real FFmpeg → fake server) and, in `EndToEnd/`, the client against a real Hyperion.ng |
+| `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames), end-to-end streaming (real FFmpeg → fake server) and, in `EndToEnd/`, the client against a real Hyperion.ng and HyperHDR |
 | `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour, media source resolution |
 | `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `TestHelpers` (shared, not a test project) |
 
@@ -49,11 +49,11 @@ throttling and that the process is killed.
   Linux) and run `dotnet test --solution Jellyfin.Plugin.HyperionGrabber.slnx -c Release -- --filter-method "*WithConfiguredHardware*"`.
   Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this.
 
-## End-to-end tests against Hyperion.ng
+## End-to-end tests against Hyperion.ng and HyperHDR
 
-`EndToEnd/HyperionNgEndToEndTests` run `HyperionClient` and `TestPatternPlayer` against a real Hyperion.ng and look
-inside it over its JSON-RPC API (TCP 19444, `HyperionJsonRpc`): the priority list (`serverinfo`) and the colors each
-instance sends to its LED device (`instance-data` / `getLedSnapshot`).
+`EndToEnd/HyperionEndToEndTests` run `HyperionClient` and `TestPatternPlayer` against a real Hyperion.ng or HyperHDR
+and look inside it over its JSON-RPC API (TCP 19444): the priority list (`serverinfo`) and the colors each instance
+computes for its LEDs.
 
 | Test | Checks |
 | --- | --- |
@@ -62,23 +62,38 @@ instance sends to its LED device (`instance-data` / `getLedSnapshot`).
 | `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
 | `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
 
-Colors are compared by which channels are on, because Hyperion's gamma, brightness compensation and smoothing
-change the values; reads are repeated until they match or 15 s pass (`Eventually`), since Hyperion handles the
+Colors are compared by which channels are on, because the servers' gamma, brightness compensation and smoothing
+change the values; reads are repeated until they match or 15 s pass (`Eventually`), since a server handles the
 FlatBuffers and JSON-RPC connections independently.
 
-- **The server.** `tests/e2e/hyperion-ng/Dockerfile` installs the `hyperion` package from Hyperion's official APT
-  repository (Debian bookworm). The repository keeps only the current release, so CI always tests the version users
-  install; the job summary names it.
-- **CI.** The `End-to-end (Hyperion.ng)` job builds and starts the container, sets `HYPERION_GRABBER_E2E_HOST=127.0.0.1`
-  and runs the `EndToEnd` namespace for both builds one after the other (`--max-parallel-test-modules 1`), because
-  they share the server. Hyperion's log is printed after the tests.
-- **Skipped** everywhere else: without `HYPERION_GRABBER_E2E_HOST` the tests report as skipped.
-- **Preparation.** `HyperionNgFixture` logs in with the factory password `hyperion` (override with
-  `HYPERION_GRABBER_E2E_PASSWORD`), gives instance 0 four LEDs on Hyperion's `file` device, creates the instance
-  `Grabber E2E second instance` with the reverse layout, turns off the startup effect and waits for the one already
-  playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real setup.
+The two servers share most of the JSON-RPC API. `HyperionServerApi` holds the common part (`HyperionJsonRpc` is only
+the connection); `HyperionNgApi` and `HyperHdrApi` cover the differences:
 
-Run them locally with Docker:
+| | Hyperion.ng 2.2 | HyperHDR 22 |
+| --- | --- | --- |
+| Instance of a request | `instance` field in the request | per connection: `instance` / `switchTo` (the schemas reject an `instance` field); every command fails with "Not ready" while that instance is stopped |
+| LED colors | `instance-data` / `getLedSnapshot`: what goes to the device, after smoothing | `ledcolors` / `ledstream-start`: a stream of flat `[r, g, b, ...]` arrays, before smoothing |
+| Settings | `config` / `getconfig`, `setconfig` for any instance, running or not | for the connection's running instance only; `setconfig` takes the full settings, so they are read, changed and written back |
+| Factory password | `hyperion` | `hyperhdr` |
+
+- **The servers.** `tests/e2e/hyperion-ng/Dockerfile` installs the `hyperion` package from Hyperion's official APT
+  repository (Debian bookworm). That repository keeps only the current release, so CI always tests the version users
+  install. `tests/e2e/hyperhdr/Dockerfile` installs HyperHDR's Debian bookworm package from its GitHub release, pinned
+  by tag and SHA-256: HyperHDR's APT repository also keeps only the latest release, and the plugin documents support
+  for HyperHDR 22. To test a newer HyperHDR, change the three `ARG`s (the digest is on the release page and in
+  `gh api repos/awawa-dev/HyperHDR/releases/tags/<tag>`). The job summary names the version.
+- **CI.** The `End-to-end (Hyperion.ng)` and `End-to-end (HyperHDR)` jobs (one matrix job) build and start a container,
+  set `HYPERION_GRABBER_E2E_HOST=127.0.0.1` and run the `EndToEnd` namespace for both builds one after the other
+  (`--max-parallel-test-modules 1`), because they share the server. The server's log is printed after the tests.
+- **Skipped** everywhere else: without `HYPERION_GRABBER_E2E_HOST` the tests report as skipped.
+- **Preparation.** `HyperionServerFixture` asks the server what it is (`sysinfo`), logs in with its factory password
+  (override with `HYPERION_GRABBER_E2E_PASSWORD`), gives instance 0 four LEDs on the `file` device, creates the
+  instance `Grabber E2E second instance` with the reverse layout, turns off the startup effect and waits for the ones
+  already playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real
+  setup. HyperHDR shows the settings of running instances only, so a stopped instance other than the fixture's own is
+  refused too.
+
+Run them locally with Docker (`hyperhdr` instead of `hyperion-ng` for HyperHDR):
 
 ```bash
 docker build -t hyperion-ng-e2e tests/e2e/hyperion-ng
@@ -91,8 +106,8 @@ In PowerShell set the variable with `$env:HYPERION_GRABBER_E2E_HOST = '127.0.0.1
 `HYPERION_GRABBER_E2E_FLATBUFFERS_PORT` and `HYPERION_GRABBER_E2E_JSON_PORT`. Add `-p 127.0.0.1:8090:8090` to watch the
 web UI while the tests run.
 
-Not covered: real LED devices (the routing to instances does not depend on the device), HyperHDR, and Hyperion's
-idle timeout against the pause keep-alive.
+Not covered: real LED devices (the routing to instances does not depend on the device) and the servers' idle timeout
+against the pause keep-alive.
 
 ## Kinds of tests and where they matter
 

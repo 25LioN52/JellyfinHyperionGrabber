@@ -106,8 +106,8 @@ FlatBuffers server is shared by all instances.
   stop it, or give that instance a source with a lower priority number than the plugin's (for example a color set
   from the Hyperion app on that instance).
 
-This is tested automatically against Hyperion.ng with two instances on every change to the plugin; according to its
-source code, HyperHDR 22 distributes the picture the same way.
+This is tested automatically against Hyperion.ng and HyperHDR 22, each with two instances, on every change to the
+plugin.
 
 ## Color and smoothing
 

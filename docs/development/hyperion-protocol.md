@@ -86,7 +86,7 @@ instance receives every client's registration, images and clears:
   instance started later joins with the next frame.
 
 So one plugin connection drives a WLED instance and a Hue instance together, each through its own LED layout,
-smoothing and calibration; priorities are per instance. The end-to-end tests verify this on Hyperion.ng.
+smoothing and calibration; priorities are per instance. The end-to-end tests verify this on both servers.
 
 ## Our codec
 
@@ -128,6 +128,6 @@ Example, `Clear { priority: 150 }`, which is also the golden-bytes test:
 - The harness verifies itself against buffers from the official builder. Google.FlatBuffers 25.2.10's
   `Verifier.VerifyUnion` passes a wrong type id to its callback, so the harness verifies unions as "type field, then
   `VerifyTable` on the value".
-- End-to-end tests run our client against a real Hyperion.ng (official APT package, in Docker) and read the result
-  back over its JSON-RPC API: the priority list and the colors each instance sends to its LEDs
-  ([Testing](testing.md#end-to-end-tests-against-hyperionng)).
+- End-to-end tests run our client against a real Hyperion.ng (official APT package) and HyperHDR (official release
+  package), each in Docker, and read the result back over their JSON-RPC API: the priority list and the colors each
+  instance computes for its LEDs ([Testing](testing.md#end-to-end-tests-against-hyperionng-and-hyperhdr)).
