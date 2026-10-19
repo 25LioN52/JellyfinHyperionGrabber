@@ -118,9 +118,11 @@ public sealed class KodiClockTests : IAsyncDisposable
         var clock = KodiClock.Start(new KodiClockOptions("127.0.0.1", TestHelpers.GetUnusedPort(), ItemId), _time, _logger);
         _clock = clock;
 
-        await TestHelpers.WaitUntilAsync(() => clock.Description.Contains("not reachable", StringComparison.Ordinal));
+        // The clock sets its description, then logs, then counts the retry: wait for the count, not the description.
+        await TestHelpers.WaitUntilAsync(() => clock.Retries >= 1);
 
         Assert.Null(clock.Latest);
+        Assert.Contains("not reachable", clock.Description, StringComparison.Ordinal);
         Assert.Contains("Allow remote control from applications on other systems", clock.Description, StringComparison.Ordinal);
         var logged = Assert.Single(_logger.Collector.GetSnapshot(), r => r.Level == LogLevel.Information);
         Assert.Contains("does not accept remote control", logged.Message, StringComparison.Ordinal);
