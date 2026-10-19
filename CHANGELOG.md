@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.1](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.7.0...v0.7.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* re-register when Hyperion.ng asks for it ([#40](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/40)) ([03ddc45](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/03ddc45b7a8a78e27419f7b68faed3573745dd1c))
+
+
+### Dependencies
+
+* Bump the testing group with 5 updates ([#38](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/38)) ([1437ec6](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/1437ec6fe9d346809ddbabad82ea55f3028c654b))
+
 ## [0.7.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.6.0...v0.7.0) (2026-10-11)
 
 
