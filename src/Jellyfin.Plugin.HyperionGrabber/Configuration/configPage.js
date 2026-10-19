@@ -11,8 +11,39 @@ const HyperionGrabberConfig = {
     defaultPauseReleaseSeconds: 15,
     maxPauseReleaseSeconds: 3600,
     defaultKodiPort: 9090,
+    defaultPort: 19400,
+    defaultPriority: 150,
+    maxTargets: 8,
     statusRefreshMilliseconds: 2000
 };
+
+const noDevicesText = 'No devices yet. Start playing something on your TV, then press Refresh.';
+
+// One more Hyperion server. Static markup only (names and hosts are set as values afterwards), so Jellyfin upgrades
+// the emby elements; emby-input creates each label from its label attribute.
+const targetCardMarkup = `
+<h4 class="targetTitle"></h4>
+<div class="inputContainer">
+    <input is="emby-input" type="text" class="targetName" label="Name (optional)" maxlength="100" autocomplete="off" placeholder="Bedroom" />
+    <div class="fieldDescription">Shown in the status, for example the room.</div>
+</div>
+<div class="inputContainer">
+    <input is="emby-input" type="text" class="targetHost" label="Host" autocomplete="off" placeholder="192.168.1.21" />
+    <div class="fieldDescription">The Hyperion.ng or HyperHDR server of this TV.</div>
+</div>
+<div class="inputContainer">
+    <input is="emby-input" type="number" class="targetPort" label="FlatBuffers port" min="1" max="65535" />
+</div>
+<div class="inputContainer">
+    <input is="emby-input" type="number" class="targetPriority" label="Priority" min="100" max="199" />
+</div>
+<button is="emby-button" type="button" class="raised button-alt block targetTestConnection"><span>Test connection</span></button>
+<button is="emby-button" type="button" class="raised button-alt block targetTestPattern"><span>Send test pattern (8 s)</span></button>
+<div class="fieldDescription targetResult" role="status" aria-live="polite" hidden></div>
+<h4>Devices</h4>
+<div class="checkboxList targetDevices"></div>
+<div class="fieldDescription">Playback on these devices drives this server.</div>
+<button is="emby-button" type="button" class="raised button-alt block targetRemove"><span>Remove this Hyperion server</span></button>`;
 
 function readInteger(view, id) {
     return Number.parseInt(view.querySelector(id).value, 10);
@@ -58,10 +89,40 @@ function validateFramesPerSecond(fps) {
 
 function readTarget(view) {
     return {
+        Name: view.querySelector('#HyperionName').value.trim(),
         Host: view.querySelector('#HyperionHost').value.trim(),
         Port: Number.parseInt(view.querySelector('#HyperionPort').value, 10),
         Priority: Number.parseInt(view.querySelector('#HyperionPriority').value, 10)
     };
+}
+
+function readCardTarget(card) {
+    return {
+        Name: card.querySelector('.targetName').value.trim(),
+        Host: card.querySelector('.targetHost').value.trim(),
+        Port: Number.parseInt(card.querySelector('.targetPort').value, 10),
+        Priority: Number.parseInt(card.querySelector('.targetPriority').value, 10),
+        Devices: readChoices(card.querySelector('.targetDevices'))
+    };
+}
+
+function targetCards(view) {
+    return Array.from(view.querySelector('#AdditionalTargetList').querySelectorAll('.hyperionTarget'));
+}
+
+// Two targets with the same server and priority would fight over it.
+function findDuplicateTarget(targets) {
+    const seen = new Set();
+    for (const target of targets) {
+        const key = `${target.Host.toLowerCase()}|${target.Port}|${target.Priority}`;
+        if (seen.has(key)) {
+            return `Two Hyperion servers use ${target.Host}:${target.Port} with priority ${target.Priority}. Give one of them another priority, or remove it.`;
+        }
+
+        seen.add(key);
+    }
+
+    return null;
 }
 
 function validateTarget(target) {
@@ -80,10 +141,15 @@ function validateTarget(target) {
     return null;
 }
 
-function showResult(view, success, message) {
-    const result = view.querySelector('#HyperionResult');
+function showResult(result, success, message) {
     result.textContent = (success ? '✔ ' : '✖ ') + message;
     result.hidden = false;
+}
+
+function showAdditionalTargetResult(view, message) {
+    const result = view.querySelector('#AdditionalTargetResult');
+    result.textContent = message || '';
+    result.hidden = !message;
 }
 
 function showPlaybackResult(view, message) {
@@ -92,9 +158,9 @@ function showPlaybackResult(view, message) {
     result.hidden = !message;
 }
 
-function setBusy(view, busy) {
-    for (const id of ['#HyperionTestConnection', '#HyperionTestPattern']) {
-        view.querySelector(id).disabled = busy;
+function setBusy(buttons, busy) {
+    for (const button of buttons) {
+        button.disabled = busy;
     }
 }
 
@@ -122,22 +188,59 @@ async function postAction(path, body) {
     }
 }
 
-async function runAction(view, path, extra, pendingMessage) {
-    const target = readTarget(view);
+async function runAction(target, result, buttons, path, extra, pendingMessage) {
     const problem = validateTarget(target);
     if (problem) {
-        showResult(view, false, problem);
+        showResult(result, false, problem);
         return;
     }
 
-    setBusy(view, true);
-    showResult(view, true, pendingMessage);
+    setBusy(buttons, true);
+    showResult(result, true, pendingMessage);
     try {
-        const response = await postAction(path, Object.assign(target, extra));
-        showResult(view, response.Success, response.Message);
+        const response = await postAction(path, Object.assign({ Host: target.Host, Port: target.Port, Priority: target.Priority }, extra));
+        showResult(result, response.Success, response.Message);
     } finally {
-        setBusy(view, false);
+        setBusy(buttons, false);
     }
+}
+
+function wireTestButtons(readTargetNow, result, testConnection, testPattern) {
+    const buttons = [testConnection, testPattern];
+    testConnection.addEventListener('click', function () {
+        runAction(readTargetNow(), result, buttons, 'HyperionGrabber/TestConnection', {}, 'Connecting…');
+    });
+    testPattern.addEventListener('click', function () {
+        runAction(readTargetNow(), result, buttons, 'HyperionGrabber/TestPattern', { DurationSeconds: 8 }, 'Sending the test pattern for 8 seconds… look at the TV.');
+    });
+}
+
+// Numbers the cards after the first server and allows adding only up to the limit.
+function updateTargetCards(view) {
+    const cards = targetCards(view);
+    cards.forEach((card, index) => {
+        card.querySelector('.targetTitle').textContent = `Hyperion server ${index + 2}`;
+    });
+    view.querySelector('#AddTarget').disabled = cards.length + 1 >= HyperionGrabberConfig.maxTargets;
+}
+
+function addTargetCard(view, target) {
+    const card = document.createElement('div');
+    card.className = 'verticalSection hyperionTarget';
+    card.innerHTML = targetCardMarkup;
+    view.querySelector('#AdditionalTargetList').append(card);
+    card.querySelector('.targetName').value = target.Name || '';
+    card.querySelector('.targetHost').value = target.Host || '';
+    card.querySelector('.targetPort').value = target.Port || HyperionGrabberConfig.defaultPort;
+    card.querySelector('.targetPriority').value = target.Priority || HyperionGrabberConfig.defaultPriority;
+    renderChoices(card.querySelector('.targetDevices'), view.hyperionOfferedDevices || [], target.Devices || [], noDevicesText);
+    wireTestButtons(() => readCardTarget(card), card.querySelector('.targetResult'), card.querySelector('.targetTestConnection'), card.querySelector('.targetTestPattern'));
+    card.querySelector('.targetRemove').addEventListener('click', function () {
+        card.remove();
+        updateTargetCards(view);
+    });
+    updateTargetCards(view);
+    return card;
 }
 
 // Jellyfin may format GUIDs with or without dashes; compare them normalized.
@@ -199,11 +302,14 @@ async function loadClients(view, selectedDevices, selectedUsers) {
         showPlaybackResult(view, '✖ Could not load the devices and users from Jellyfin. Saved selections are still shown.');
     }
 
-    renderChoices(
-        view.querySelector('#PlaybackDeviceList'),
-        (clients.Devices || []).map(d => ({ Id: d.Id, Name: d.Name, Detail: describeDevice(d) })),
-        selectedDevices,
-        'No devices yet. Start playing something on your TV, then press Refresh.');
+    const offeredDevices = (clients.Devices || []).map(d => ({ Id: d.Id, Name: d.Name, Detail: describeDevice(d) }));
+    view.hyperionOfferedDevices = offeredDevices;
+    renderChoices(view.querySelector('#PlaybackDeviceList'), offeredDevices, selectedDevices, noDevicesText);
+    for (const card of targetCards(view)) {
+        const list = card.querySelector('.targetDevices');
+        renderChoices(list, offeredDevices, readChoices(list), noDevicesText);
+    }
+
     renderChoices(
         view.querySelector('#PlaybackUserList'),
         (clients.Users || []).map(u => ({ Id: u.Id, Name: u.Name })),
@@ -255,15 +361,43 @@ function describeStatus(status) {
     return lines;
 }
 
+function listItem(text) {
+    const item = document.createElement('li');
+    item.textContent = text;
+    return item;
+}
+
 // Device and item names come from Jellyfin clients, so status values are only ever set as text.
+// With one Hyperion server the panel looks as it always did; with several, each gets its own entry.
 function renderStatus(view, status) {
+    const targets = status.Targets || [];
+    const single = targets.length === 1 ? targets[0] : null;
     view.querySelector('#HyperionStatusSummary').textContent = status.Summary;
     const problem = view.querySelector('#HyperionStatusProblem');
-    problem.textContent = status.Problem ? '✖ ' + status.Problem : '';
-    problem.hidden = !status.Problem;
-    view.querySelector('#HyperionStatusDetails').replaceChildren(...describeStatus(status).map(text => {
+    problem.textContent = single && single.Problem ? '✖ ' + single.Problem : '';
+    problem.hidden = !problem.textContent;
+    const details = view.querySelector('#HyperionStatusDetails');
+    if (targets.length <= 1) {
+        details.replaceChildren(...(single ? describeStatus(single) : []).map(listItem));
+        return;
+    }
+
+    details.replaceChildren(...targets.map(target => {
         const item = document.createElement('li');
-        item.textContent = text;
+        const name = document.createElement('b');
+        name.textContent = `${target.Name}: `;
+        item.append(name, document.createTextNode(target.Summary));
+        const lines = describeStatus(target);
+        if (target.Problem) {
+            lines.unshift('✖ ' + target.Problem);
+        }
+
+        if (lines.length > 0) {
+            const sublist = document.createElement('ul');
+            sublist.replaceChildren(...lines.map(listItem));
+            item.append(sublist);
+        }
+
         return item;
     }));
 }
@@ -328,6 +462,7 @@ export default function (view) {
         startStatusRefresh(view);
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(HyperionGrabberConfig.pluginUniqueId).then(function (config) {
+            view.querySelector('#HyperionName').value = config.HyperionName || '';
             view.querySelector('#HyperionHost').value = config.HyperionHost || '';
             view.querySelector('#HyperionPort').value = config.HyperionPort || 19400;
             view.querySelector('#HyperionPriority').value = config.HyperionPriority || 150;
@@ -337,6 +472,13 @@ export default function (view) {
             view.querySelector('#PauseReleaseSeconds').value = savedOrDefault(config.PauseReleaseSeconds, HyperionGrabberConfig.defaultPauseReleaseSeconds);
             view.querySelector('#KodiClockEnabled').checked = config.KodiClockEnabled !== false;
             view.querySelector('#KodiJsonRpcPort').value = savedOrDefault(config.KodiJsonRpcPort, HyperionGrabberConfig.defaultKodiPort);
+            view.querySelector('#AdditionalTargetList').replaceChildren();
+            showAdditionalTargetResult(view, null);
+            for (const target of config.AdditionalTargets || []) {
+                addTargetCard(view, target);
+            }
+
+            updateTargetCards(view);
             return loadClients(view, config.PlaybackDevices || [], config.PlaybackUsers || []);
         }).then(function () {
             Dashboard.hideLoadingMsg();
@@ -346,12 +488,15 @@ export default function (view) {
         });
     });
 
-    view.querySelector('#HyperionTestConnection').addEventListener('click', function () {
-        runAction(view, 'HyperionGrabber/TestConnection', {}, 'Connecting…');
-    });
+    wireTestButtons(
+        () => readTarget(view),
+        view.querySelector('#HyperionResult'),
+        view.querySelector('#HyperionTestConnection'),
+        view.querySelector('#HyperionTestPattern'));
 
-    view.querySelector('#HyperionTestPattern').addEventListener('click', function () {
-        runAction(view, 'HyperionGrabber/TestPattern', { DurationSeconds: 8 }, 'Sending the test pattern for 8 seconds… look at your TV.');
+    view.querySelector('#AddTarget').addEventListener('click', function () {
+        showAdditionalTargetResult(view, null);
+        addTargetCard(view, {}).querySelector('.targetHost').focus();
     });
 
     view.querySelector('#PlaybackRefresh').addEventListener('click', function () {
@@ -363,9 +508,30 @@ export default function (view) {
         const target = readTarget(view);
         const problem = validateTarget(target);
         if (problem) {
-            showResult(view, false, problem);
+            showResult(view.querySelector('#HyperionResult'), false, problem);
             return false;
         }
+
+        const additionalTargets = [];
+        for (const [index, card] of targetCards(view).entries()) {
+            const additional = readCardTarget(card);
+            const additionalProblem = validateTarget(additional);
+            if (additionalProblem) {
+                showResult(card.querySelector('.targetResult'), false, additionalProblem);
+                showAdditionalTargetResult(view, `✖ Hyperion server ${index + 2}: ${additionalProblem}`);
+                return false;
+            }
+
+            additionalTargets.push(additional);
+        }
+
+        const duplicate = findDuplicateTarget([target, ...additionalTargets]);
+        if (duplicate) {
+            showAdditionalTargetResult(view, '✖ ' + duplicate);
+            return false;
+        }
+
+        showAdditionalTargetResult(view, null);
 
         const playbackEnabled = view.querySelector('#PlaybackEnabled').checked;
         const framesPerSecond = readFramesPerSecond(view);
@@ -381,7 +547,7 @@ export default function (view) {
             return false;
         }
 
-        if (playbackEnabled && devices.length === 0) {
+        if (playbackEnabled && devices.length === 0 && additionalTargets.every(t => t.Devices.length === 0)) {
             showPlaybackResult(view, '✖ Select at least one device, or turn off Follow playback.');
             return false;
         }
@@ -389,9 +555,11 @@ export default function (view) {
         showPlaybackResult(view, null);
         Dashboard.showLoadingMsg();
         ApiClient.getPluginConfiguration(HyperionGrabberConfig.pluginUniqueId).then(function (config) {
+            config.HyperionName = target.Name;
             config.HyperionHost = target.Host;
             config.HyperionPort = target.Port;
             config.HyperionPriority = target.Priority;
+            config.AdditionalTargets = additionalTargets;
             config.PlaybackEnabled = playbackEnabled;
             config.FramesPerSecond = framesPerSecond;
             config.LatencyOffsetMilliseconds = latencyOffset;

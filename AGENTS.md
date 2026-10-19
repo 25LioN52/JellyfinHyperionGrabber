@@ -11,7 +11,8 @@ TCP protocol (port 19400). Hyperion owns LED layout, calibration and devices (WL
 
 Status: **0.7 shipped** playback → LEDs: streaming, light timing offset, pause release, position tracking,
 reconnecting to Hyperion, the status panel (0.6) and the Kodi clock (0.7). M1 is complete, including end-to-end tests
-against a real Hyperion.ng and HyperHDR in CI. Next: M2/M3. See `docs/roadmap.md`.
+against a real Hyperion.ng and HyperHDR in CI. M3 is complete: HDR/Dolby Vision tone mapping, anamorphic video, black
+bars via Hyperion, one Hyperion server per TV. Next: the rest of M2. See `docs/roadmap.md`.
 
 ## Commands
 
@@ -83,6 +84,8 @@ the PR description says how it was verified (including manual tests against a re
 - Jellyfin serializes API JSON in **PascalCase**.
 - The plugin version's 4th component is the Jellyfin line (`x.y.z.0` = 10.11, `x.y.z.1` = 12); Jellyfin installs the
   highest version whose `targetAbi` it supports (`docs/development/adr/0003-jellyfin-version-support.md`).
+- Hyperion.ng and HyperHDR hand every FlatBuffers picture to **every running instance**; a client cannot pick one. A
+  target is therefore a server + priority, never an instance (ADR 0014).
 - Jellyfin for Kodi reports the playback position in **whole seconds** (truncated), on pause/resume/seek and otherwise
   only about every 4 minutes; other clients report milliseconds every 3-10 s. `PositionTracker` keeps the range the
   position can be in (ADR 0009); for Kodi clients `KodiClock` reads Kodi's own position over JSON-RPC (TCP 9090,

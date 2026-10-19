@@ -39,8 +39,10 @@ Jellyfin serializes API JSON in PascalCase; the config page sends and reads Pasc
 - Add properties only with defaults that keep today's behaviour.
 - Never rename or remove a property without a migration (read the old value, write the new one) and a test that an
   old XML file still loads (`PluginConfigurationTests.MissingElements_KeepDefaults` is the pattern).
-- Multiple targets (M3) will replace the single host/port/priority with a list; the migration turns the existing
-  values into the first target.
+- Multiple targets (M3) did not need a migration: the top-level host/port/priority and `PlaybackDevices` stay the
+  first target, `HyperionName` and `AdditionalTargets` (name, host, port, priority, devices) were added with empty
+  defaults ([ADR 0014](adr/0014-multiple-targets.md)). `PluginConfigurationTests` load a 0.7 XML file and the page's
+  JSON.
 
 ## Playback events (input for M1/M2)
 
@@ -91,6 +93,9 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
   `ILibraryManager.GetItemById(itemId)`, then `IMediaSourceManager.GetStaticMediaSources(item, false)` (same signature
   in 10.11 and 12). It picks the source whose id matches the reported `MediaSourceId` (with or without dashes),
   otherwise the first (default) one, and takes size, codec and dynamic range from its first video stream.
+- The size is the display size: for anamorphic video (`MediaStream.IsAnamorphic`, or unknown and a shape more than
+  5 % off) the width becomes height × `MediaStream.AspectRatio` (`16:9`, `2.40:1`, ...), so a 16:9 DVD stored at
+  720×576 is decoded as 1024×576 and sent as 160×90 ([ADR 0013](adr/0013-black-bars-and-aspect-ratio.md)).
 - The dynamic range comes from `MediaStream.VideoRangeType`, which Jellyfin computes from the color transfer, the
   Dolby Vision profile and the base-layer compatibility id (`Jellyfin.Data.Enums`, the same in 10.11 and 12):
   `HDR10`, `HDR10Plus`, `DOVIWithHDR10(Plus)` and `DOVIWithEL(HDR10Plus)` are PQ; `HLG` and `DOVIWithHLG` are HLG;

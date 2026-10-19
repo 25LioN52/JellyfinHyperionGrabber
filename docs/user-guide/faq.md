@@ -31,6 +31,14 @@ LEDs are not washed out. It works out of the box with Jellyfin's bundled FFmpeg;
 **What about subtitles, menus and the on-screen display?**
 They are not part of the decoded video, so the lights follow the film only, which is usually what you want.
 
+**I have LEDs on two TVs. Can each follow its own TV?**
+Yes. Give each TV its own Hyperion server and add the second one under **More TVs** on the plugin page, with the
+devices that play on that TV. See [More TVs](configuration.md#more-tvs).
+
+**What about black bars in widescreen films?**
+Hyperion's black bar detector cuts them off, so the LEDs follow the picture inside the bars. Hyperion.ng has it on by
+default; in HyperHDR turn it on. See [Black bars](hyperion-setup.md#black-bars-widescreen-films).
+
 **What happens when I pause?**
 The LEDs hold the last frame. If the pause lasts longer than 15 seconds (configurable, 0 = always hold), the plugin
 releases its Hyperion priority and Hyperion shows its default until you resume; the lights pick up the picture again

@@ -112,7 +112,47 @@ FlatBuffers server is shared by all instances.
 This is tested automatically against Hyperion.ng and HyperHDR 22, each with two instances, on every change to the
 plugin.
 
+## Black bars (widescreen films)
+
+Many films are wider than the TV: a 2.39:1 film comes with black bars at the top and bottom, a 4:3 show with bars at
+the sides. Without help, the LEDs at those edges stay dark. Hyperion's **Blackbar detector** finds the bars and makes
+the LED layout follow the picture inside them; it notices when the shape changes during a film (IMAX scenes) after
+about two seconds.
+
+=== "Hyperion.ng"
+
+    On by default. To check: pick the instance in the top bar, open **Image Processing → Blackbar detector** and make
+    sure **Enable** is ticked.
+
+=== "HyperHDR"
+
+    **Off by default.** Pick the instance in the top bar, open **Image Processing → Blackbar detector**, tick
+    **Enable** and save. Do this for every instance (WLED, Hue, ...).
+
+**Mode** *Default* works for most films. If grey-ish bars are not detected, raise the **Threshold** a little (for
+example from 5 to 10 %).
+
+The plugin's picture is a good input for the detector: it contains no subtitles or on-screen display, so nothing
+appears in the bars unless subtitles are burned into the video. HDR films keep black bars black (see
+[HDR and Dolby Vision](configuration.md#hdr-and-dolby-vision)). The plugin also sends anamorphic video (for example
+16:9 DVDs) in the shape the TV shows. This is tested automatically against Hyperion.ng and HyperHDR with
+letterboxed and pillarboxed pictures.
+
+## Several TVs
+
+The plugin sends one TV's picture to one Hyperion server. For LEDs on two TVs, run **one Hyperion.ng or HyperHDR server
+per TV**, then add the second one on the plugin page under [More TVs](configuration.md#more-tvs):
+
+- **A Raspberry Pi (or any device) per TV**, each running Hyperion with that TV's LEDs. Enter each one's address.
+- **Two Hyperion containers on one machine**, for example on a NAS. Give the second container other ports: with
+  bridge networking map its container ports to free host ports (for example `19401:19400`, `8091:8090` and
+  `19445:19444`); with host networking change its ports under **Network Services** in its web UI. Enter the host with
+  port `19401` in the plugin.
+
+Two **instances** of one server cannot serve two TVs: every running instance shows the same picture (see
+[Several devices at once](#several-devices-at-once)). Use instances for several LED devices on the same TV.
+
 ## Color and smoothing
 
-Brightness, color calibration, gamma, smoothing and black-border detection are Hyperion settings and apply to the
+Brightness, color calibration, gamma, smoothing and black bar detection are Hyperion settings and apply to the
 plugin's picture exactly as they do to any other source. The plugin never changes them.

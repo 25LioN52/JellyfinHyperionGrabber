@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
@@ -104,10 +105,33 @@ public class JellyfinVideoInputResolver : IVideoInputResolver
         }
 
         // Like Jellyfin's transcoder: the file protocol prefix keeps FFmpeg from reading a path as another protocol.
-        return VideoInputResult.Supported(new VideoInput("file:" + source.Path, video.Width.Value, video.Height.Value, video.Codec)
+        var (width, height) = GetDisplaySize(video, video.Width.Value, video.Height.Value);
+        return VideoInputResult.Supported(new VideoInput("file:" + source.Path, width, height, video.Codec)
         {
             DynamicRange = GetDynamicRange(video),
         });
+    }
+
+    /// <summary>
+    /// Returns the size the video is shown at. Anamorphic video has non-square pixels (a 16:9 DVD is stored at 720×576),
+    /// so it is widened to its display aspect ratio, which Jellyfin keeps as text such as <c>16:9</c> or <c>2.40:1</c>.
+    /// </summary>
+    /// <param name="video">The video stream.</param>
+    /// <param name="width">The stored width.</param>
+    /// <param name="height">The stored height.</param>
+    /// <returns>The display size; the stored size when the aspect ratio is unknown or the pixels are square.</returns>
+    internal static (int Width, int Height) GetDisplaySize(MediaStream video, int width, int height)
+    {
+        if (video.IsAnamorphic == false || !TryParseAspectRatio(video.AspectRatio, out var ratio))
+        {
+            return (width, height);
+        }
+
+        // Jellyfin rounds the ratio to a common name (up to 3.75 % off for 4:3), so without its anamorphic flag
+        // (libraries scanned before it existed) only a clearly different shape counts.
+        var tolerance = video.IsAnamorphic == true ? 0 : 0.05;
+        var displayWidth = (int)Math.Round(height * ratio, MidpointRounding.AwayFromZero);
+        return Math.Abs(displayWidth - width) > width * tolerance ? (displayWidth, height) : (width, height);
     }
 
     /// <summary>Maps Jellyfin's video range to what tone mapping needs to know.</summary>
@@ -135,6 +159,24 @@ public class JellyfinVideoInputResolver : IVideoInputResolver
                 => string.Equals(video.ColorTransfer, "arib-std-b67", StringComparison.OrdinalIgnoreCase) ? VideoDynamicRange.Hlg : VideoDynamicRange.Hdr10,
             _ => VideoDynamicRange.Sdr,
         };
+    }
+
+    /// <summary>Parses <c>width:height</c> (decimals allowed) into a plausible display shape, between 1:5 and 5:1.</summary>
+    private static bool TryParseAspectRatio(string? text, out double ratio)
+    {
+        ratio = 0;
+        var separator = text?.IndexOf(':', StringComparison.Ordinal) ?? -1;
+        if (separator <= 0
+            || !double.TryParse(text.AsSpan(0, separator), NumberStyles.Float, CultureInfo.InvariantCulture, out var width)
+            || !double.TryParse(text.AsSpan(separator + 1), NumberStyles.Float, CultureInfo.InvariantCulture, out var height)
+            || width <= 0
+            || height <= 0)
+        {
+            return false;
+        }
+
+        ratio = width / height;
+        return ratio is >= 0.2 and <= 5;
     }
 
     // Jellyfin formats media source ids as GUIDs without dashes; clients may send either format.

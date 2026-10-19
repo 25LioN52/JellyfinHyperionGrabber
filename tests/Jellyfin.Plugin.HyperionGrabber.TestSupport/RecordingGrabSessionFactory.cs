@@ -25,14 +25,14 @@ public sealed class RecordingGrabSessionFactory : IGrabSessionFactory
     public bool FailStart { get; set; }
 
     /// <inheritdoc />
-    public IGrabSession Start(PlaybackState state)
+    public IGrabSession Start(PlaybackState state, PlaybackTarget target)
     {
         if (FailStart)
         {
             throw new InvalidOperationException("Simulated session failure.");
         }
 
-        var session = new RecordingGrabSession(state);
+        var session = new RecordingGrabSession(state, target);
         _sessions.Enqueue(session);
         return session;
     }
@@ -44,18 +44,32 @@ public sealed class RecordingGrabSessionFactory : IGrabSessionFactory
 public sealed class RecordingGrabSession : IGrabSession
 {
     private readonly ConcurrentQueue<PlaybackState> _updates = new();
+    private int _disposeStarted;
     private int _disposed;
 
-    internal RecordingGrabSession(PlaybackState initial) => Initial = initial;
+    internal RecordingGrabSession(PlaybackState initial, PlaybackTarget target)
+    {
+        Initial = initial;
+        Target = target;
+    }
 
     /// <summary>Gets the state the session was started with.</summary>
     public PlaybackState Initial { get; }
+
+    /// <summary>Gets the target the session was started for.</summary>
+    public PlaybackTarget Target { get; }
 
     /// <summary>Gets the updates received, oldest first.</summary>
     public IReadOnlyList<PlaybackState> Updates => _updates.ToArray();
 
     /// <summary>Gets a value indicating whether the session was disposed.</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    /// <summary>Gets a value indicating whether disposing has begun (it may wait for <see cref="DisposeGate"/>).</summary>
+    public bool IsDisposeStarted => Volatile.Read(ref _disposeStarted) != 0;
+
+    /// <summary>Gets or sets what disposing waits for, to simulate a session that takes a while to stop.</summary>
+    public Task DisposeGate { get; set; } = Task.CompletedTask;
 
     /// <summary>Gets or sets what <see cref="GetStatus"/> returns.</summary>
     public GrabSessionStatus Status { get; set; } = new() { Phase = GrabSessionPhase.Streaming };
@@ -67,9 +81,10 @@ public sealed class RecordingGrabSession : IGrabSession
     public GrabSessionStatus GetStatus() => Status;
 
     /// <inheritdoc />
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        Interlocked.Exchange(ref _disposeStarted, 1);
+        await DisposeGate.ConfigureAwait(false);
         Interlocked.Exchange(ref _disposed, 1);
-        return ValueTask.CompletedTask;
     }
 }
