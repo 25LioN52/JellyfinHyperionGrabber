@@ -152,25 +152,27 @@ public class HyperionGrabberControllerTests
             Decoder = HardwareAcceleration.Qsv,
         };
         var since = new DateTimeOffset(2026, 10, 11, 20, 0, 0, TimeSpan.Zero);
-        _status.Status = new PlaybackMonitorStatus(true, 1, 0, new FollowedPlayback("Living room", "Kodi", ItemId, since, session), null);
+        var playback = new FollowedPlayback("Living room", "Kodi", ItemId, since, session);
+        _status.Status = new PlaybackMonitorStatus(true, 0, [new TargetStatus("TV", PlaybackTargetKey.None, 1, playback, null)]);
 
         var response = Assert.IsType<StatusResponse>(Assert.IsType<OkObjectResult>(_controller.GetStatus().Result).Value);
 
-        Assert.Equal("Streaming", response.State);
         Assert.Equal("Streaming Big Buck Bunny from Living room to Hyperion.", response.Summary);
-        Assert.Equal("Big Buck Bunny", response.ItemName);
-        Assert.Equal(25.0, response.FramesPerSecond);
-        Assert.Equal("Intel Quick Sync", response.Decoder);
+        var target = Assert.Single(response.Targets);
+        Assert.Equal("Streaming", target.State);
+        Assert.Equal("Big Buck Bunny", target.ItemName);
+        Assert.Equal(25.0, target.FramesPerSecond);
+        Assert.Equal("Intel Quick Sync", target.Decoder);
     }
 
     [Fact]
     public void GetStatus_WithoutPlayback_DoesNotLookUpAnItem()
     {
-        _status.Status = new PlaybackMonitorStatus(true, 1, 0, null, null);
+        _status.Status = new PlaybackMonitorStatus(true, 0, [new TargetStatus("TV", PlaybackTargetKey.None, 1, null, null)]);
 
         var response = Assert.IsType<StatusResponse>(Assert.IsType<OkObjectResult>(_controller.GetStatus().Result).Value);
 
-        Assert.Equal("Waiting", response.State);
+        Assert.Equal("Waiting", Assert.Single(response.Targets).State);
         _libraryManager.DidNotReceiveWithAnyArgs().GetItemById(Guid.Empty);
     }
 
@@ -203,7 +205,7 @@ public class HyperionGrabberControllerTests
 
     private sealed class FakeStatusSource : IPlaybackStatusSource
     {
-        public PlaybackMonitorStatus Status { get; set; } = new(false, 0, 0, null, null);
+        public PlaybackMonitorStatus Status { get; set; } = new(false, 0, []);
 
         public PlaybackMonitorStatus GetStatus() => Status;
     }

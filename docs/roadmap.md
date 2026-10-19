@@ -42,7 +42,8 @@ Milestones are deliberately small so each one ships something usable. Items beco
       ([ADR 0012](development/adr/0012-hdr-tone-mapping.md))
 - [x] Anamorphic and letterboxed sources: the display aspect ratio is sent; black bars are left to Hyperion's
       detector ([ADR 0013](development/adr/0013-black-bars-and-aspect-ratio.md))
-- [ ] Multiple targets: map devices to different Hyperion servers or instances (one per TV)
+- [x] Multiple targets: map devices to different Hyperion servers (one per TV). Instances of one server all get the
+      same picture, so they cannot serve two TVs ([ADR 0014](development/adr/0014-multiple-targets.md))
 
 ## M4: Polish
 

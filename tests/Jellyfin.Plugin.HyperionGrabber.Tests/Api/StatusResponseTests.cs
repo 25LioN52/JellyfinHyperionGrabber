@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Jellyfin.Plugin.HyperionGrabber.Api;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
@@ -9,39 +10,57 @@ namespace Jellyfin.Plugin.HyperionGrabber.Tests.Api;
 public class StatusResponseTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 11, 20, 0, 0, TimeSpan.Zero);
+    private static readonly Guid ItemId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    private static readonly PlaybackTargetKey LivingRoom = new("192.168.1.20", 19400, 150);
 
     [Theory]
     [InlineData(false, 1, "Off", "Follow playback is off")]
-    [InlineData(true, 0, "NoDevices", "No device is selected")]
-    [InlineData(true, 2, "Waiting", "Waiting for playback on a selected device.")]
-    public void From_WithoutPlayback_SaysWhatIsMissing(bool follows, int devices, string state, string summary)
+    [InlineData(true, 0, "NoDevices", "No device is selected: tick your TV under Devices and save.")]
+    [InlineData(true, 2, "On", "Waiting for playback on a selected device.")]
+    public void From_WithOneTarget_SummarizesIt(bool follows, int devices, string state, string summary)
     {
-        var response = StatusResponse.From(new PlaybackMonitorStatus(follows, devices, 0, null, null), itemName: null);
+        var response = StatusResponse.From(new PlaybackMonitorStatus(follows, 0, [Target(devices, null)]), NoItem);
 
         Assert.Equal(state, response.State);
         Assert.StartsWith(summary, response.Summary, StringComparison.Ordinal);
-        Assert.Null(response.DeviceName);
-        Assert.Null(response.FramesPerSecond);
+        var target = Assert.Single(response.Targets);
+        Assert.Null(target.DeviceName);
+        Assert.Null(target.FramesPerSecond);
+    }
+
+    [Fact]
+    public void From_WithSeveralTargets_CountsThemAndDescribesEach()
+    {
+        var bedroom = new TargetStatus("Bedroom", new PlaybackTargetKey("192.168.1.21", 19400, 150), 0, null, null);
+        var status = new PlaybackMonitorStatus(true, 0, [Target(1, new GrabSessionStatus { Phase = GrabSessionPhase.Streaming }), bedroom]);
+
+        var response = StatusResponse.From(status, _ => "Big Buck Bunny");
+
+        Assert.Equal(("On", "Following playback on 2 Hyperion servers."), (response.State, response.Summary));
+        Assert.Equal(["Living room", "Bedroom"], response.Targets.Select(t => t.Name));
+        Assert.Equal("192.168.1.21:19400 (priority 150)", response.Targets[1].Address);
+        Assert.Equal("Streaming Big Buck Bunny from Living room TV to Hyperion.", response.Targets[0].Summary);
+        Assert.Equal(("NoDevices", "No device is selected for this Hyperion server."), (response.Targets[1].State, response.Targets[1].Summary));
     }
 
     [Theory]
-    [InlineData(GrabSessionPhase.Starting, "Starting: opening Big Buck Bunny for Living room.")]
-    [InlineData(GrabSessionPhase.Streaming, "Streaming Big Buck Bunny from Living room to Hyperion.")]
-    [InlineData(GrabSessionPhase.Paused, "Paused on Living room: the lights hold the last picture.")]
-    [InlineData(GrabSessionPhase.PausedReleased, "Paused on Living room: the lights are back to Hyperion's default until you resume.")]
+    [InlineData(GrabSessionPhase.Starting, "Starting: opening Big Buck Bunny for Living room TV.")]
+    [InlineData(GrabSessionPhase.Streaming, "Streaming Big Buck Bunny from Living room TV to Hyperion.")]
+    [InlineData(GrabSessionPhase.Paused, "Paused on Living room TV: the lights hold the last picture.")]
+    [InlineData(GrabSessionPhase.PausedReleased, "Paused on Living room TV: the lights are back to Hyperion's default until you resume.")]
     [InlineData(GrabSessionPhase.Reconnecting, "Hyperion is unreachable; reconnecting.")]
     [InlineData(GrabSessionPhase.WaitingForHyperion, "Hyperion has been unreachable for over a minute: decoding stopped, still trying to connect.")]
-    [InlineData(GrabSessionPhase.Stopped, "The lights do not follow the playback on Living room.")]
-    public void From_WhilePlaying_DescribesThePhase(GrabSessionPhase phase, string summary)
+    [InlineData(GrabSessionPhase.Stopped, "The lights do not follow the playback on Living room TV.")]
+    public void Target_WhilePlaying_DescribesThePhase(GrabSessionPhase phase, string summary)
     {
-        var response = StatusResponse.From(Playing(new GrabSessionStatus { Phase = phase }), "Big Buck Bunny");
+        var response = Describe(new GrabSessionStatus { Phase = phase }, "Big Buck Bunny");
 
         Assert.Equal(phase.ToString(), response.State);
         Assert.Equal(summary, response.Summary);
     }
 
     [Fact]
-    public void From_WhilePlaying_CopiesTheSessionDetails()
+    public void Target_WhilePlaying_CopiesTheSessionDetails()
     {
         var session = new GrabSessionStatus
         {
@@ -58,10 +77,11 @@ public class StatusResponseTests
             IsHardwareFallback = true,
         };
 
-        var response = StatusResponse.From(Playing(session), itemName: null);
+        var response = Describe(session, itemName: null);
 
+        Assert.Equal(("Living room", "192.168.1.20:19400 (priority 150)"), (response.Name, response.Address));
         Assert.Equal("Hyperion is unreachable: refused.", response.Problem);
-        Assert.Equal(("Living room", "Kodi", Now), (response.DeviceName, response.Client, response.Since));
+        Assert.Equal(("Living room TV", "Kodi", Now), (response.DeviceName, response.Client, response.Since));
         Assert.Null(response.ItemName);
         Assert.Equal(754.4, response.PositionSeconds);
         Assert.Equal(0.12, response.PositionUncertaintySeconds);
@@ -79,46 +99,60 @@ public class StatusResponseTests
     [InlineData(VideoDynamicRange.DolbyVision, HdrToneMapper.Tonemapx, "160×90, Dolby Vision profile 5, tone mapped to SDR with tonemapx")]
     [InlineData(VideoDynamicRange.DolbyVision, HdrToneMapper.Zscale, "160×90, Dolby Vision profile 5, tone mapped with zscale: only Jellyfin's FFmpeg (tonemapx) gets its colors right")]
     [InlineData(VideoDynamicRange.Hdr10, HdrToneMapper.None, "160×90, HDR10, not tone mapped: the colors look pale (Jellyfin's FFmpeg has neither tonemapx nor zscale)")]
-    public void From_WhilePlaying_DescribesThePicture(VideoDynamicRange range, HdrToneMapper toneMapper, string picture)
+    public void Target_WhilePlaying_DescribesThePicture(VideoDynamicRange range, HdrToneMapper toneMapper, string picture)
     {
         var session = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, Picture = new PictureFormat(160, 90, range, toneMapper) };
 
-        Assert.Equal(picture, StatusResponse.From(Playing(session), "x").Picture);
+        Assert.Equal(picture, Describe(session, "x").Picture);
     }
 
     [Fact]
-    public void From_BeforeTheVideoIsKnown_HasNoPicture()
+    public void Target_BeforeTheVideoIsKnown_HasNoPicture()
     {
-        Assert.Null(StatusResponse.From(Playing(new GrabSessionStatus { Phase = GrabSessionPhase.Starting }), "x").Picture);
+        Assert.Null(Describe(new GrabSessionStatus { Phase = GrabSessionPhase.Starting }, "x").Picture);
     }
 
     [Fact]
-    public void From_WithAPlayerClock_NamesIt()
+    public void Target_WithAPlayerClock_NamesIt()
     {
         var session = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, TimingSource = "Kodi's clock at 192.168.1.50:9090." };
 
-        var response = StatusResponse.From(Playing(session), "x");
-
-        Assert.Equal("Kodi's clock at 192.168.1.50:9090.", response.Timing);
+        Assert.Equal("Kodi's clock at 192.168.1.50:9090.", Describe(session, "x").Timing);
     }
 
     [Fact]
-    public void From_WithoutAnItemName_SpeaksOfTheVideo()
+    public void Target_WithoutAnItemName_SpeaksOfTheVideo()
     {
-        var response = StatusResponse.From(Playing(new GrabSessionStatus { Phase = GrabSessionPhase.Starting }), itemName: null);
+        var response = Describe(new GrabSessionStatus { Phase = GrabSessionPhase.Starting }, itemName: null);
 
-        Assert.Equal("Starting: opening the video for Living room.", response.Summary);
+        Assert.Equal("Starting: opening the video for Living room TV.", response.Summary);
     }
 
     [Fact]
-    public void From_KeepsTheLastProblemWithItsTime()
+    public void Target_LooksUpTheNameOfTheItemItPlays()
+    {
+        var response = TargetStatusResponse.From(Target(1, new GrabSessionStatus { Phase = GrabSessionPhase.Streaming }), id => id == ItemId ? "Big Buck Bunny" : null);
+
+        Assert.Equal("Big Buck Bunny", response.ItemName);
+    }
+
+    [Fact]
+    public void Target_KeepsTheLastProblemWithItsTime()
     {
         var problem = new ProblemReport(Now.AddMinutes(-3), "FFmpeg exited with code 1.");
 
-        var response = StatusResponse.From(new PlaybackMonitorStatus(true, 1, 0, null, problem), itemName: null);
+        var response = TargetStatusResponse.From(new TargetStatus("Living room", LivingRoom, 1, null, problem), NoItem);
 
         Assert.Equal("FFmpeg exited with code 1.", response.LastProblem);
         Assert.Equal(Now.AddMinutes(-3), response.LastProblemTime);
+    }
+
+    [Fact]
+    public void Target_WithoutAServer_SaysSo()
+    {
+        var response = TargetStatusResponse.From(new TargetStatus("Hyperion", PlaybackTargetKey.None, 1, null, null), NoItem);
+
+        Assert.Equal("no Hyperion server", response.Address);
     }
 
     [Theory]
@@ -129,13 +163,16 @@ public class StatusResponseTests
     [InlineData(HardwareAcceleration.VideoToolbox, "VideoToolbox")]
     [InlineData(HardwareAcceleration.Rkmpp, "Rockchip MPP")]
     [InlineData(HardwareAcceleration.None, "CPU")]
-    public void From_NamesTheDecoder(HardwareAcceleration decoder, string name)
+    public void Target_NamesTheDecoder(HardwareAcceleration decoder, string name)
     {
-        var response = StatusResponse.From(Playing(new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, Decoder = decoder }), "x");
-
-        Assert.Equal(name, response.Decoder);
+        Assert.Equal(name, Describe(new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, Decoder = decoder }, "x").Decoder);
     }
 
-    private static PlaybackMonitorStatus Playing(GrabSessionStatus session)
-        => new(true, 1, 0, new FollowedPlayback("Living room", "Kodi", Guid.NewGuid(), Now, session), null);
+    private static string? NoItem(Guid itemId) => null;
+
+    private static TargetStatusResponse Describe(GrabSessionStatus session, string? itemName)
+        => TargetStatusResponse.From(Target(1, session), _ => itemName);
+
+    private static TargetStatus Target(int devices, GrabSessionStatus? session)
+        => new("Living room", LivingRoom, devices, session is null ? null : new FollowedPlayback("Living room TV", "Kodi", ItemId, Now, session), null);
 }

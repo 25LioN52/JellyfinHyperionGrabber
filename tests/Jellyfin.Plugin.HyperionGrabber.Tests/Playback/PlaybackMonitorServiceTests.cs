@@ -31,7 +31,7 @@ public sealed class PlaybackMonitorServiceTests : IDisposable
     [Fact]
     public async Task PlaybackStart_OnSelectedDevice_StartsSession()
     {
-        _filterSource.Filter = PlaybackFilter.Create(true, ["kodi-device"], []);
+        _filterSource.Filter = TestFilters.OneTarget(true, ["kodi-device"], []);
         await _service.StartAsync(Ct);
 
         _sessionManager.PlaybackStart += Raise.EventWith(_sessionManager, PlaybackEventMapperTests.Args("kodi-device"));
@@ -43,7 +43,7 @@ public sealed class PlaybackMonitorServiceTests : IDisposable
     [Fact]
     public async Task PlaybackProgressAndStopped_ReachTheSession()
     {
-        _filterSource.Filter = PlaybackFilter.Create(true, ["kodi-device"], []);
+        _filterSource.Filter = TestFilters.OneTarget(true, ["kodi-device"], []);
         await _service.StartAsync(Ct);
         _sessionManager.PlaybackStart += Raise.EventWith(_sessionManager, PlaybackEventMapperTests.Args("kodi-device"));
         var progress = PlaybackEventMapperTests.Args("kodi-device");
@@ -62,7 +62,7 @@ public sealed class PlaybackMonitorServiceTests : IDisposable
         await _service.StartAsync(Ct);
         _sessionManager.PlaybackStart += Raise.EventWith(_sessionManager, PlaybackEventMapperTests.Args("kodi-device"));
 
-        _filterSource.Filter = PlaybackFilter.Create(true, ["kodi-device"], []);
+        _filterSource.Filter = TestFilters.OneTarget(true, ["kodi-device"], []);
         _filterSource.RaiseChanged();
 
         await TestHelpers.WaitUntilAsync(() => _factory.Running.Count == 1);
@@ -71,7 +71,7 @@ public sealed class PlaybackMonitorServiceTests : IDisposable
     [Fact]
     public async Task StopAsync_UnsubscribesAndStopsTheSession()
     {
-        _filterSource.Filter = PlaybackFilter.Create(true, ["kodi-device"], []);
+        _filterSource.Filter = TestFilters.OneTarget(true, ["kodi-device"], []);
         await _service.StartAsync(Ct);
         _sessionManager.PlaybackStart += Raise.EventWith(_sessionManager, PlaybackEventMapperTests.Args("kodi-device"));
         await TestHelpers.WaitUntilAsync(() => _factory.Sessions.Count == 1);
