@@ -101,3 +101,4 @@ nav:
           - 0009 Position tracking: development/adr/0009-position-tracking.md
           - 0010 Reconnect with backoff: development/adr/0010-reconnect-with-backoff.md
           - 0011 Kodi clock: development/adr/0011-kodi-clock.md
+          - 0012 HDR tone mapping: development/adr/0012-hdr-tone-mapping.md

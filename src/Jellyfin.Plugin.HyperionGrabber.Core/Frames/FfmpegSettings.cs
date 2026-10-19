@@ -23,6 +23,9 @@ public sealed record FfmpegSettings
     /// </summary>
     public IReadOnlyCollection<string> HardwareDecodingCodecs { get; init; } = [];
 
+    /// <summary>Gets the best HDR tone mapping filter the server's FFmpeg has.</summary>
+    public HdrToneMapper ToneMapper { get; init; }
+
     /// <summary>
     /// Returns the acceleration to use for a video codec: hardware only when the administrator enabled hardware
     /// decoding for that codec, like Jellyfin's own transcoder. An unknown codec gets hardware acceleration; the

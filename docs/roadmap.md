@@ -38,7 +38,8 @@ Milestones are deliberately small so each one ships something usable. Items beco
 
 ## M3: Picture quality
 
-- [ ] HDR10 / HLG tone mapping to SDR; Dolby Vision (including profile 5) color handling
+- [x] HDR10 / HLG tone mapping to SDR; Dolby Vision (including profile 5) color handling
+      ([ADR 0012](development/adr/0012-hdr-tone-mapping.md))
 - [ ] Anamorphic and letterboxed sources
 - [ ] Multiple targets: map devices to different Hyperion servers or instances (one per TV)
 

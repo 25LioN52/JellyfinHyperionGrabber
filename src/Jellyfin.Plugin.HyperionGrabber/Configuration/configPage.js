@@ -243,6 +243,10 @@ function describeStatus(status) {
         lines.push(`Decoder: ${status.Decoder}${status.HardwareFallback ? ' (hardware decoding failed, see the log)' : ''}`);
     }
 
+    if (status.Picture) {
+        lines.push(`Picture: ${status.Picture}`);
+    }
+
     if (status.LastProblem) {
         const time = status.LastProblemTime ? ` (${new Date(status.LastProblemTime).toLocaleString()})` : '';
         lines.push(`Last problem${time}: ${status.LastProblem}`);

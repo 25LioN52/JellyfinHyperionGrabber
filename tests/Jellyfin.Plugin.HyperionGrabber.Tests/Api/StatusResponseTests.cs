@@ -72,6 +72,26 @@ public class StatusResponseTests
         Assert.Equal("The client's reports to Jellyfin.", response.Timing);
     }
 
+    [Theory]
+    [InlineData(VideoDynamicRange.Sdr, HdrToneMapper.None, "160×90, SDR")]
+    [InlineData(VideoDynamicRange.Hdr10, HdrToneMapper.Tonemapx, "160×90, HDR10, tone mapped to SDR with tonemapx")]
+    [InlineData(VideoDynamicRange.Hlg, HdrToneMapper.Zscale, "160×90, HLG, tone mapped to SDR with zscale")]
+    [InlineData(VideoDynamicRange.DolbyVision, HdrToneMapper.Tonemapx, "160×90, Dolby Vision profile 5, tone mapped to SDR with tonemapx")]
+    [InlineData(VideoDynamicRange.DolbyVision, HdrToneMapper.Zscale, "160×90, Dolby Vision profile 5, tone mapped with zscale: only Jellyfin's FFmpeg (tonemapx) gets its colors right")]
+    [InlineData(VideoDynamicRange.Hdr10, HdrToneMapper.None, "160×90, HDR10, not tone mapped: the colors look pale (Jellyfin's FFmpeg has neither tonemapx nor zscale)")]
+    public void From_WhilePlaying_DescribesThePicture(VideoDynamicRange range, HdrToneMapper toneMapper, string picture)
+    {
+        var session = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, Picture = new PictureFormat(160, 90, range, toneMapper) };
+
+        Assert.Equal(picture, StatusResponse.From(Playing(session), "x").Picture);
+    }
+
+    [Fact]
+    public void From_BeforeTheVideoIsKnown_HasNoPicture()
+    {
+        Assert.Null(StatusResponse.From(Playing(new GrabSessionStatus { Phase = GrabSessionPhase.Starting }), "x").Picture);
+    }
+
     [Fact]
     public void From_WithAPlayerClock_NamesIt()
     {

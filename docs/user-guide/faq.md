@@ -24,8 +24,9 @@ can be heavy on low-power CPUs: lower the **Frame rate** on the plugin page. Whe
 skips pictures rather than falling behind.
 
 **Does it work with HDR and Dolby Vision?**
-That is a planned headline feature: HDR10 and Dolby Vision are tone-mapped to SDR colors before sending, so the LEDs
-are not washed out.
+Yes. HDR10, HDR10+, HLG and Dolby Vision (including profile 5) are tone mapped to SDR colors before sending, so the
+LEDs are not washed out. It works out of the box with Jellyfin's bundled FFmpeg; see
+[HDR and Dolby Vision](configuration.md#hdr-and-dolby-vision).
 
 **What about subtitles, menus and the on-screen display?**
 They are not part of the decoded video, so the lights follow the film only, which is usually what you want.

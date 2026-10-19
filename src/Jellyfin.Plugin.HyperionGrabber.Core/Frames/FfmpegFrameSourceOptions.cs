@@ -63,6 +63,15 @@ public sealed record FfmpegFrameSourceOptions
     /// <summary>Gets the number of frame buffers; when all are in use FFmpeg is not read and blocks on the pipe.</summary>
     public int BufferCount { get; init; } = DefaultBufferCount;
 
+    /// <summary>Gets how the video encodes brightness and color.</summary>
+    public VideoDynamicRange DynamicRange { get; init; }
+
+    /// <summary>Gets the filter that maps HDR video to SDR; not used for SDR video.</summary>
+    public HdrToneMapper ToneMapper { get; init; }
+
+    /// <summary>Gets a value indicating whether the video is HDR and mapped to SDR with <see cref="ToneMapper"/>.</summary>
+    public bool IsToneMapped => DynamicRange != VideoDynamicRange.Sdr && ToneMapper != HdrToneMapper.None;
+
     /// <summary>Gets the output height in pixels: even, at least 2, keeping the source aspect ratio.</summary>
     public int OutputHeight => SourceWidth <= 0 || SourceHeight <= 0
         ? 0
@@ -122,6 +131,16 @@ public sealed record FfmpegFrameSourceOptions
             errors.Add("Unknown hardware acceleration.");
         }
 
+        if (!Enum.IsDefined(DynamicRange))
+        {
+            errors.Add("Unknown dynamic range.");
+        }
+
+        if (!Enum.IsDefined(ToneMapper))
+        {
+            errors.Add("Unknown tone mapping filter.");
+        }
+
         if (BufferCount is < MinBufferCount or > MaxBufferCount)
         {
             errors.Add(string.Create(CultureInfo.InvariantCulture, $"Buffer count must be between {MinBufferCount} and {MaxBufferCount}."));
@@ -151,6 +170,8 @@ public sealed record FfmpegFrameSourceOptions
             StartPosition = startPosition,
             HardwareAcceleration = acceleration,
             HardwareDevice = acceleration == HardwareAcceleration.None ? null : settings.HardwareDevice,
+            DynamicRange = input.DynamicRange,
+            ToneMapper = settings.ToneMapper,
         };
     }
 }

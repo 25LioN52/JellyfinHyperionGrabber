@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -103,7 +104,37 @@ public class JellyfinVideoInputResolver : IVideoInputResolver
         }
 
         // Like Jellyfin's transcoder: the file protocol prefix keeps FFmpeg from reading a path as another protocol.
-        return VideoInputResult.Supported(new VideoInput("file:" + source.Path, video.Width.Value, video.Height.Value, video.Codec));
+        return VideoInputResult.Supported(new VideoInput("file:" + source.Path, video.Width.Value, video.Height.Value, video.Codec)
+        {
+            DynamicRange = GetDynamicRange(video),
+        });
+    }
+
+    /// <summary>Maps Jellyfin's video range to what tone mapping needs to know.</summary>
+    /// <param name="video">The video stream.</param>
+    /// <returns>The dynamic range; SDR when Jellyfin does not know better.</returns>
+    internal static VideoDynamicRange GetDynamicRange(MediaStream video)
+    {
+        if (video.BitDepth is < 10)
+        {
+            // Like Jellyfin, which only tone maps video with 10 bits or more: 8-bit "HDR" is mislabelled SDR.
+            return VideoDynamicRange.Sdr;
+        }
+
+        return video.VideoRangeType switch
+        {
+            VideoRangeType.HDR10 or VideoRangeType.HDR10Plus
+                or VideoRangeType.DOVIWithHDR10 or VideoRangeType.DOVIWithHDR10Plus
+                or VideoRangeType.DOVIWithEL or VideoRangeType.DOVIWithELHDR10Plus => VideoDynamicRange.Hdr10,
+            VideoRangeType.HLG or VideoRangeType.DOVIWithHLG => VideoDynamicRange.Hlg,
+            VideoRangeType.DOVI => VideoDynamicRange.DolbyVision,
+
+            // Dolby Vision outside the specification: Jellyfin 10.11 treats it as HDR10, Jellyfin 12 as whatever its base
+            // layer is tagged.
+            VideoRangeType.DOVIInvalid when video.VideoRange == VideoRange.HDR
+                => string.Equals(video.ColorTransfer, "arib-std-b67", StringComparison.OrdinalIgnoreCase) ? VideoDynamicRange.Hlg : VideoDynamicRange.Hdr10,
+            _ => VideoDynamicRange.Sdr,
+        };
     }
 
     // Jellyfin formats media source ids as GUIDs without dashes; clients may send either format.

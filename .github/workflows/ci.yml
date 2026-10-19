@@ -37,10 +37,18 @@ jobs:
 
       - name: Install FFmpeg (frame source tests)
         if: matrix.os == 'ubuntu-latest'
+        # The system's FFmpeg (zscale tone mapping) and Jellyfin's (tonemapx), from Jellyfin's APT repository as on a
+        # Jellyfin server.
         run: |
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/ubuntu $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/jellyfin.list
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends ffmpeg
+          sudo apt-get install -y -q --no-install-recommends ffmpeg jellyfin-ffmpeg7
           echo "HYPERION_GRABBER_REQUIRE_FFMPEG=true" >> "$GITHUB_ENV"
+          echo "HYPERION_GRABBER_JELLYFIN_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg" >> "$GITHUB_ENV"
+          echo "FFmpeg: $(ffmpeg -hide_banner -version | head -n 1); Jellyfin's: $(/usr/lib/jellyfin-ffmpeg/ffmpeg -hide_banner -version | head -n 1)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Restore
         run: dotnet restore ${{ env.SOLUTION }}

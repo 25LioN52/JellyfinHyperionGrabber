@@ -60,6 +60,9 @@ public sealed record StatusResponse
     /// <summary>Gets a value indicating whether hardware decoding failed and the CPU decodes.</summary>
     public bool HardwareFallback { get; init; }
 
+    /// <summary>Gets the picture sent to Hyperion, in words: size, dynamic range and tone mapping.</summary>
+    public string? Picture { get; init; }
+
     /// <summary>Gets where the position comes from, in words (Kodi's clock, or the client's reports and why).</summary>
     public string? Timing { get; init; }
 
@@ -113,6 +116,7 @@ public sealed record StatusResponse
             DecoderRestarts = session.DecoderRestarts,
             Decoder = session.Decoder is { } decoder ? DescribeDecoder(decoder) : null,
             HardwareFallback = session.IsHardwareFallback,
+            Picture = session.Picture is { } picture ? DescribePicture(picture) : null,
             Timing = session.TimingSource ?? "The client's reports to Jellyfin.",
         };
     }
@@ -127,6 +131,27 @@ public sealed record StatusResponse
         GrabSessionPhase.WaitingForHyperion => "Hyperion has been unreachable for over a minute: decoding stopped, still trying to connect.",
         _ => $"The lights do not follow the playback on {device}.",
     };
+
+    private static string DescribePicture(PictureFormat picture)
+    {
+        var size = $"{picture.Width}×{picture.Height}";
+        var range = picture.DynamicRange switch
+        {
+            VideoDynamicRange.Hdr10 => "HDR10",
+            VideoDynamicRange.Hlg => "HLG",
+            VideoDynamicRange.DolbyVision => "Dolby Vision profile 5",
+            _ => "SDR",
+        };
+
+        return (picture.DynamicRange, picture.ToneMapper) switch
+        {
+            (VideoDynamicRange.Sdr, _) => $"{size}, SDR",
+            (_, HdrToneMapper.None) => $"{size}, {range}, not tone mapped: the colors look pale (Jellyfin's FFmpeg has neither tonemapx nor zscale)",
+            (VideoDynamicRange.DolbyVision, HdrToneMapper.Zscale) => $"{size}, {range}, tone mapped with zscale: only Jellyfin's FFmpeg (tonemapx) gets its colors right",
+            (_, HdrToneMapper.Tonemapx) => $"{size}, {range}, tone mapped to SDR with tonemapx",
+            _ => $"{size}, {range}, tone mapped to SDR with zscale",
+        };
+    }
 
     private static string DescribeDecoder(HardwareAcceleration decoder) => decoder switch
     {

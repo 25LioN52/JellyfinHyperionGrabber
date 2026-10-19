@@ -17,6 +17,7 @@ page is open:
 | Pictures | Pictures sent to Hyperion per second compared to the frame rate you set, how many were sent and dropped, and how often decoding restarted (seeks). Many drops or a rate well below the setting mean the server, the network or Hyperion cannot keep up. |
 | Timing | Where the position comes from: **Kodi's clock** when the plugin reads it from Kodi, otherwise the client's reports to Jellyfin (with the reason if Kodi's clock cannot be used). |
 | Decoder | The hardware decoder in use, or **CPU**. *Hardware decoding failed* means Jellyfin's hardware acceleration did not work for this video; see the log for FFmpeg's message. |
+| Picture | The size of the picture sent to Hyperion, and for HDR video how it becomes SDR, for example `160×90, HDR10, tone mapped to SDR with tonemapx`. See [HDR and Dolby Vision](#hdr-and-dolby-vision). |
 | Last problem | The most recent problem with its time, also after it was resolved (for example a Hyperion restart during the last movie). |
 
 ## Hyperion server
@@ -65,6 +66,18 @@ so with this setting on, any device on your network can control Kodi; that is ho
 the [status](#status) shows whether Kodi's clock is used. Without the setting, or when Kodi cannot be reached (a
 firewall, or Jellyfin seeing a proxy instead of the Kodi device), the plugin uses Jellyfin's reports as before.
 
+### HDR and Dolby Vision
+
+LEDs cannot show HDR, so the plugin turns HDR video into SDR colors before sending it (tone mapping). There is nothing
+to set up: HDR10, HDR10+, HLG and Dolby Vision, including profile 5 (common in streaming rips, where it otherwise shows
+green and purple), are detected from Jellyfin's media info and mapped automatically. Jellyfin's own **Enable tone
+mapping** setting under **Dashboard → Playback → Transcoding** only affects transcoding for clients, not the lights.
+
+The plugin uses Jellyfin's FFmpeg, and Jellyfin's bundled FFmpeg (in every official package and Docker image) does
+all of this. With a custom FFmpeg build, HDR10 and HLG need zimg (the `zscale` filter), and Dolby Vision profile 5
+keeps wrong colors; the **Picture** line of the [status](#status) says so. Tone mapping happens on the small picture
+after scaling and adds almost no load.
+
 If Hyperion restarts or the network drops during playback, the plugin reconnects by itself (after 1 s, then up to every
 30 s) and the lights continue at the current picture; see
 [Hyperion restarted during playback](troubleshooting.md#hyperion-restarted-during-playback).
@@ -89,9 +102,10 @@ If two selected devices play at the same time, the one that started most recentl
 the other one takes over.
 
 The picture is decoded with Jellyfin's FFmpeg and the hardware acceleration set under
-**Dashboard → Playback → Transcoding**, scaled to 160 pixels wide; see [Installation](installation.md#docker-notes).
+**Dashboard → Playback → Transcoding**, scaled to 160 pixels wide and, for HDR video, tone mapped to SDR; see
+[Installation](installation.md#docker-notes).
 
 ## More playback settings *(planned)*
 
-Later releases add: a timing offset per device, HDR tone mapping, and multiple Hyperion targets (one per TV). See the
+Later releases add: a timing offset per device, and multiple Hyperion targets (one per TV). See the
 [roadmap](../roadmap.md).

@@ -8,4 +8,8 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Frames;
 /// <param name="Width">Display width of the video stream.</param>
 /// <param name="Height">Display height of the video stream.</param>
 /// <param name="Codec">Video codec (for example <c>hevc</c>), or <see langword="null"/> when unknown.</param>
-public sealed record VideoInput(string Path, int Width, int Height, string? Codec);
+public sealed record VideoInput(string Path, int Width, int Height, string? Codec)
+{
+    /// <summary>Gets how the video encodes brightness and color; HDR is tone mapped to SDR.</summary>
+    public VideoDynamicRange DynamicRange { get; init; }
+}

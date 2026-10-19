@@ -107,6 +107,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private int _requestedDecoder; // HardwareAcceleration + 1.
     private IPlaybackClock? _clock;
     private string? _clockNote; // Why the clock's readings are not used, when they disagree.
+    private PictureFormat? _picture;
 
     // Owned by the run task.
     private DateTimeOffset _statusWindowStart;
@@ -206,6 +207,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             IsHardwareFallback = decoder == (int)HardwareAcceleration.None + 1
                 && Volatile.Read(ref _requestedDecoder) > (int)HardwareAcceleration.None + 1,
             TimingSource = Volatile.Read(ref _clock) is { } clock ? Volatile.Read(ref _clockNote) ?? clock.Description : null,
+            Picture = Volatile.Read(ref _picture),
         };
     }
 
@@ -334,6 +336,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             return null;
         }
 
+        LogToneMapping(frames);
+        Volatile.Write(ref _picture, PictureFormat.From(frames));
+
         KodiClockOptions? clock = null;
         if (settings.KodiClock && KodiClockOptions.IsKodi(state.Client) && KodiClockOptions.ParseAddress(state.RemoteAddress) is { } address)
         {
@@ -348,6 +353,28 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         }
 
         return new Plan(hyperion, frames, settings.LatencyOffset, settings.PauseRelease, clock);
+    }
+
+    /// <summary>Logs how an HDR video is mapped to SDR, once per playback.</summary>
+    private void LogToneMapping(FfmpegFrameSourceOptions frames)
+    {
+        if (frames.DynamicRange == VideoDynamicRange.Sdr)
+        {
+            return;
+        }
+
+        if (!frames.IsToneMapped)
+        {
+            Log.NoToneMapping(_logger, frames.DynamicRange);
+        }
+        else if (frames.DynamicRange == VideoDynamicRange.DolbyVision && frames.ToneMapper != HdrToneMapper.Tonemapx)
+        {
+            Log.DolbyVisionWithoutTonemapx(_logger, frames.ToneMapper);
+        }
+        else
+        {
+            Log.ToneMapping(_logger, frames.DynamicRange, frames.ToneMapper);
+        }
     }
 
     private async Task StreamAsync(Plan plan, CancellationToken token)
@@ -1001,5 +1028,14 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 23, Level = LogLevel.Warning, Message = "The Kodi remote control port {Port} is not between 1 and 65535; the timing uses the client's reports")]
         public static partial void InvalidKodiPort(ILogger logger, int port);
+
+        [LoggerMessage(EventId = 24, Level = LogLevel.Information, Message = "{DynamicRange} video: tone mapping it to SDR with {ToneMapper}")]
+        public static partial void ToneMapping(ILogger logger, VideoDynamicRange dynamicRange, HdrToneMapper toneMapper);
+
+        [LoggerMessage(EventId = 25, Level = LogLevel.Warning, Message = "{DynamicRange} video is sent without tone mapping, so the lights show pale colors: Jellyfin's FFmpeg has neither the tonemapx nor the zscale filter")]
+        public static partial void NoToneMapping(ILogger logger, VideoDynamicRange dynamicRange);
+
+        [LoggerMessage(EventId = 26, Level = LogLevel.Warning, Message = "Dolby Vision profile 5 video: {ToneMapper} maps its brightness, but only Jellyfin's FFmpeg (tonemapx) gets its colors right")]
+        public static partial void DolbyVisionWithoutTonemapx(ILogger logger, HdrToneMapper toneMapper);
     }
 }

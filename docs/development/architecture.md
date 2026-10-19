@@ -53,6 +53,7 @@ See [ADR 0004](adr/0004-core-library-boundary.md) for why.
 | `HyperionConnectionTester` | Config-page actions; returns results instead of throwing |
 | `HyperionGrabberController` | Admin-only `POST HyperionGrabber/TestConnection` and `/TestPattern`, `GET HyperionGrabber/Clients` (devices and users of recent sessions for the config page) and `GET HyperionGrabber/Status` (the status panel, `StatusResponse`) |
 | `FfmpegFrameSource` (M1) | Runs FFmpeg from a start position and yields pooled RGB24 `VideoFrame`s at a constant rate; hardware decoding with CPU fallback; always kills and awaits the process ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) |
+| `VideoDynamicRange`, `HdrToneMapper`, `PictureFormat` (M3) | SDR, HDR10 (PQ), HLG or Dolby Vision profile 5 (from Jellyfin's media info); the best tone mapping filter of Jellyfin's FFmpeg (`tonemapx`, `zscale` or none); what the status panel shows. HDR is tone mapped on the CPU after scaling ([ADR 0012](adr/0012-hdr-tone-mapping.md)) |
 | `FfmpegFrameSourceOptions`, `FfmpegArguments` | Output size from the aspect ratio, validation, and the FFmpeg command line per hardware acceleration method |
 | `IFfmpegSettingsProvider` / `JellyfinFfmpegSettingsProvider` | Core interface for the server's FFmpeg path and hardware settings; the adapter reads Jellyfin's encoding options |
 
@@ -162,8 +163,7 @@ followed playback when a session starts or stops and keeps the last problem of a
 page polls `GET HyperionGrabber/Status` every 2 s while it is shown and the browser tab is visible, one request at a
 time, and stops when the page is left. All values are set as text (device and item names come from clients).
 
-Still planned: a per-device timing offset (M2),
-HDR tone mapping and multiple targets (M3). See the [roadmap](../roadmap.md).
+Still planned: a per-device timing offset (M2) and multiple targets (M3). See the [roadmap](../roadmap.md).
 
 ## Threading
 

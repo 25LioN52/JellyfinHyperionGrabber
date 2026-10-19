@@ -38,6 +38,13 @@ throttling and that the process is killed.
 
 - FFmpeg is taken from `HYPERION_GRABBER_FFMPEG` or the `PATH`; without it these tests are **skipped**.
 - `HYPERION_GRABBER_REQUIRE_FFMPEG=true` makes a missing FFmpeg a failure. CI on Linux installs FFmpeg and sets it.
+- `FfmpegToneMappingTests` decode a lossless 10-bit BT.2020 clip, tagged PQ and HLG, with exact code values (`geq`,
+  FFV1): one second each of black, a gray at about 100 nits and a saturated orange. Untreated, the gray comes out at
+  130 of 255 and the orange as a pale brown; tone mapped, black stays black, the gray is above 180 and the orange
+  saturated. They run once per tone mapper (`tonemapx`, `zscale`) with the first FFmpeg that has it.
+  `HYPERION_GRABBER_JELLYFIN_FFMPEG` names Jellyfin's FFmpeg, the only one with `tonemapx`; CI on Linux installs
+  jellyfin-ffmpeg from Jellyfin's APT repository next to the system FFmpeg, sets it, and then requires both tone
+  mappers to be tested.
 - `StreamingIntegrationTests` use the same clip end to end: fake playback events go through `PlaybackMonitor` and a
   real `StreamingGrabSessionFactory` (FFmpeg reading `file:<clip>`, `HyperionClient`) to `FakeHyperionServer`, which
   must receive the frame at the playback position, frames in playback order and pace, and a `Clear` on stop.
@@ -47,7 +54,8 @@ throttling and that the process is killed.
 - Hardware decoding is only tested on request: set `HYPERION_GRABBER_HWACCEL` to `Nvenc`, `Qsv`, `Vaapi`, `Amf`,
   `VideoToolbox` or `Rkmpp` (and `HYPERION_GRABBER_HWDEVICE`, for example `/dev/dri/renderD128`, for VA-API / QSV on
   Linux) and run `dotnet test --solution Jellyfin.Plugin.HyperionGrabber.slnx -c Release -- --filter-method "*WithConfiguredHardware*"`.
-  Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this.
+  Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this. `*OnConfiguredHardware*`
+  does the same for HDR: an HEVC Main 10 PQ clip (needs libx265) through the GPU scaler in `p010` and the tone mapper.
 
 ## End-to-end tests against Hyperion.ng and HyperHDR
 
@@ -132,5 +140,4 @@ against the pause keep-alive.
 
 ## Planned
 
-- *(M3)* FFmpeg tests with an HDR sample asserting tone-mapped colors.
 - *(M2)* Sync engine tests driven entirely by `FakeTimeProvider` and scripted playback events.
