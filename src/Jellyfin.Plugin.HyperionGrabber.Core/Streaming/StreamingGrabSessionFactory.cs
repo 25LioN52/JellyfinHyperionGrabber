@@ -39,7 +39,7 @@ public sealed class StreamingGrabSessionFactory : IGrabSessionFactory
             timeProvider,
             loggerFactory,
             options => FfmpegFrameSource.Start(options, timeProvider, loggerFactory.CreateLogger<FfmpegFrameSource>()),
-            async (options, cancellationToken) => await HyperionClient.ConnectAsync(options, loggerFactory.CreateLogger<HyperionClient>(), cancellationToken).ConfigureAwait(false))
+            async (options, cancellationToken) => await HyperionClient.ConnectAsync(options, loggerFactory.CreateLogger<HyperionClient>(), timeProvider, cancellationToken).ConfigureAwait(false))
     {
     }
 

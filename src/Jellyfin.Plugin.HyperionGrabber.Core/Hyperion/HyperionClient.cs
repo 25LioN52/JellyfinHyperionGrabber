@@ -15,12 +15,16 @@ namespace Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 /// A registered FlatBuffers connection to Hyperion.ng or HyperHDR.
 /// </summary>
 /// <remarks>
-/// <para>Create with <see cref="ConnectAsync"/>: the returned client is connected and its priority is registered.</para>
+/// <para>Create with <see cref="ConnectAsync(HyperionClientOptions, ILogger, TimeProvider, CancellationToken)"/>: the
+/// returned client is connected and its priority is registered.</para>
 /// <para>Sends are serialized internally and may be called concurrently, also while the client is being disposed (they
 /// then fail with <see cref="HyperionConnectionException"/>). A send's cancellation token applies while it waits for its
 /// turn; once a message is being written it completes, or fails within <see cref="HyperionClientOptions.WriteTimeout"/>,
 /// so the stream never contains half a message.</para>
 /// <para>Replies are drained continuously so the server never blocks on us.</para>
+/// <para>When Hyperion answers with <c>registered = -1</c> (an instance no longer has our priority, for example after a
+/// clear from Hyperion.ng's remote control), the next image or color is preceded by a new Register, at most once a
+/// second. A Clear never registers first.</para>
 /// <para>The client never reconnects by itself. When <see cref="IsConnected"/> turns <see langword="false"/>, dispose it and
 /// connect again; retry policy belongs to the caller.</para>
 /// <para>Disposing clears the priority (Hyperion and HyperHDR also clear it when the socket closes).</para>
@@ -30,8 +34,12 @@ public sealed partial class HyperionClient : IHyperionConnection
     private const int MaxReplyLength = 64 * 1024;
     private static readonly TimeSpan ClearOnDisposeTimeout = TimeSpan.FromSeconds(1);
 
+    // Shortest time between two Registers: Hyperion also asks again for images that were already on their way.
+    private static readonly TimeSpan MinRegisterInterval = TimeSpan.FromSeconds(1);
+
     private readonly HyperionClientOptions _options;
     private readonly ILogger _logger;
+    private readonly TimeProvider _timeProvider;
     private readonly TcpClient _tcpClient;
     private readonly NetworkStream _stream;
     [SuppressMessage(
@@ -44,15 +52,18 @@ public sealed partial class HyperionClient : IHyperionConnection
     private Task _receiveLoop = Task.CompletedTask;
     private byte[] _writeBuffer = new byte[1024];
     private CancellationTokenSource _writeTimeout = new(); // reused for every write; guarded by _writeLock
+    private long _lastRegisterTimestamp; // guarded by _writeLock once connected
     private volatile bool _closed;
     private volatile string? _lastServerError;
     private volatile bool _registered;
+    private volatile bool _registrationRequested;
     private int _disposed;
 
-    private HyperionClient(HyperionClientOptions options, ILogger logger, TcpClient tcpClient)
+    private HyperionClient(HyperionClientOptions options, ILogger logger, TimeProvider timeProvider, TcpClient tcpClient)
     {
         _options = options;
         _logger = logger;
+        _timeProvider = timeProvider;
         _tcpClient = tcpClient;
         _stream = tcpClient.GetStream();
     }
@@ -68,6 +79,9 @@ public sealed partial class HyperionClient : IHyperionConnection
     /// <summary>Gets the most recent error text reported by the server, if any.</summary>
     public string? LastServerError => _lastServerError;
 
+    /// <summary>Gets a value indicating whether Hyperion asked for a registration that has not been sent yet.</summary>
+    internal bool IsRegistrationRequested => _registrationRequested;
+
     /// <summary>
     /// Connects to the server and registers <see cref="HyperionClientOptions.Priority"/>.
     /// </summary>
@@ -78,10 +92,25 @@ public sealed partial class HyperionClient : IHyperionConnection
     /// <exception cref="ArgumentException">The options are invalid.</exception>
     /// <exception cref="HyperionConnectionException">The server is unreachable, too slow, or not a FlatBuffers server.</exception>
     /// <exception cref="HyperionProtocolException">The server rejected the registration (for example the priority).</exception>
-    public static async Task<HyperionClient> ConnectAsync(HyperionClientOptions options, ILogger logger, CancellationToken cancellationToken)
+    public static Task<HyperionClient> ConnectAsync(HyperionClientOptions options, ILogger logger, CancellationToken cancellationToken)
+        => ConnectAsync(options, logger, TimeProvider.System, cancellationToken);
+
+    /// <summary>
+    /// Connects to the server and registers <see cref="HyperionClientOptions.Priority"/>.
+    /// </summary>
+    /// <param name="options">Connection options; validated before connecting.</param>
+    /// <param name="logger">Logger for connection lifecycle events.</param>
+    /// <param name="timeProvider">Clock that paces registering again when Hyperion asks for it.</param>
+    /// <param name="cancellationToken">Cancels connecting and registering.</param>
+    /// <returns>A connected, registered client.</returns>
+    /// <exception cref="ArgumentException">The options are invalid.</exception>
+    /// <exception cref="HyperionConnectionException">The server is unreachable, too slow, or not a FlatBuffers server.</exception>
+    /// <exception cref="HyperionProtocolException">The server rejected the registration (for example the priority).</exception>
+    public static async Task<HyperionClient> ConnectAsync(HyperionClientOptions options, ILogger logger, TimeProvider timeProvider, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         options.Validate();
 
         var tcpClient = new TcpClient { NoDelay = true };
@@ -95,7 +124,7 @@ public sealed partial class HyperionClient : IHyperionConnection
             throw;
         }
 
-        var client = new HyperionClient(options, logger, tcpClient);
+        var client = new HyperionClient(options, logger, timeProvider, tcpClient);
         try
         {
             client.StartReceiving();
@@ -127,7 +156,8 @@ public sealed partial class HyperionClient : IHyperionConnection
             HyperionRequestWriter.GetMaxImageLength(rgb24.Length),
             (Rgb24: rgb24, Width: width, Height: height),
             static (destination, image) => HyperionRequestWriter.WriteImage(destination, image.Rgb24.Span, image.Width, image.Height, HyperionDefaults.InfiniteDuration),
-            cancellationToken);
+            cancellationToken,
+            registerIfRequested: true);
     }
 
     /// <summary>
@@ -143,7 +173,8 @@ public sealed partial class HyperionClient : IHyperionConnection
             HyperionRequestWriter.MaxColorLength,
             (red << 16) | (green << 8) | blue,
             static (destination, rgb) => HyperionRequestWriter.WriteColor(destination, rgb, HyperionDefaults.InfiniteDuration),
-            cancellationToken);
+            cancellationToken,
+            registerIfRequested: true);
 
     /// <inheritdoc />
     public ValueTask ClearAsync(CancellationToken cancellationToken)
@@ -238,6 +269,7 @@ public sealed partial class HyperionClient : IHyperionConnection
 
     private async Task RegisterAsync(CancellationToken cancellationToken)
     {
+        _lastRegisterTimestamp = _timeProvider.GetTimestamp();
         await SendAsync(
             HyperionRequestWriter.GetMaxRegisterLength(_options.Origin),
             (_options.Origin, _options.Priority),
@@ -269,7 +301,12 @@ public sealed partial class HyperionClient : IHyperionConnection
         _registered = true;
     }
 
-    private async ValueTask SendAsync<TState>(int maxLength, TState state, MessageEncoder<TState> encode, CancellationToken cancellationToken)
+    private async ValueTask SendAsync<TState>(
+        int maxLength,
+        TState state,
+        MessageEncoder<TState> encode,
+        CancellationToken cancellationToken,
+        bool registerIfRequested = false)
     {
         await _writeLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -279,17 +316,48 @@ public sealed partial class HyperionClient : IHyperionConnection
                 throw new HyperionConnectionException(Invariant($"The connection to Hyperion at {_options.Host}:{_options.Port} is closed."));
             }
 
-            if (_writeBuffer.Length < maxLength)
+            if (registerIfRequested && _registrationRequested)
             {
-                _writeBuffer = new byte[maxLength];
+                await RegisterAgainLockedAsync().ConfigureAwait(false);
             }
 
+            EnsureWriteBuffer(maxLength);
             var length = encode(_writeBuffer, state);
             await WriteLockedAsync(_writeBuffer.AsMemory(0, length)).ConfigureAwait(false);
         }
         finally
         {
             _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Sends Register again unless the last one is less than <see cref="MinRegisterInterval"/> ago. The caller holds
+    /// <see cref="_writeLock"/>.
+    /// </summary>
+    private async ValueTask RegisterAgainLockedAsync()
+    {
+        var now = _timeProvider.GetTimestamp();
+        if (_timeProvider.GetElapsedTime(_lastRegisterTimestamp, now) < MinRegisterInterval)
+        {
+            return; // Keep the request; a later send registers.
+        }
+
+        // Reset before writing, so a request that arrives meanwhile is kept for the next send.
+        _registrationRequested = false;
+        _lastRegisterTimestamp = now;
+        EnsureWriteBuffer(HyperionRequestWriter.GetMaxRegisterLength(_options.Origin));
+        var length = HyperionRequestWriter.WriteRegister(_writeBuffer, _options.Origin, _options.Priority);
+        await WriteLockedAsync(_writeBuffer.AsMemory(0, length)).ConfigureAwait(false);
+        Log.RegisteredAgain(_logger, _options.Priority);
+    }
+
+    /// <summary>Grows the write buffer if needed. The caller holds <see cref="_writeLock"/>.</summary>
+    private void EnsureWriteBuffer(int length)
+    {
+        if (_writeBuffer.Length < length)
+        {
+            _writeBuffer = new byte[length];
         }
     }
 
@@ -403,6 +471,15 @@ public sealed partial class HyperionClient : IHyperionConnection
         if (reply.IsRegistration)
         {
             _registration.TrySetResult(reply);
+            return;
+        }
+
+        // registered = -1 without an error. Hyperion.ng sends it when an instance gets an image for a priority it does
+        // not have (its remote control cleared it) and answers like this once we cleared our own priority; HyperHDR
+        // answers Color and Clear like this. Registering again before the next image is right or harmless in each case.
+        if (_registered)
+        {
+            _registrationRequested = true;
         }
     }
 
@@ -425,5 +502,8 @@ public sealed partial class HyperionClient : IHyperionConnection
 
         [LoggerMessage(EventId = 6, Level = LogLevel.Warning, Message = "Hyperion confirmed priority {Confirmed} but {Requested} was requested")]
         public static partial void UnexpectedRegistration(ILogger logger, int confirmed, int requested);
+
+        [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Hyperion no longer had priority {Priority}; registered it again")]
+        public static partial void RegisteredAgain(ILogger logger, int priority);
     }
 }

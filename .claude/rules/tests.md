@@ -12,7 +12,7 @@ paths:
   `FakeTimeProvider` from `Microsoft.Extensions.Time.Testing`. Short `Task.Delay` is only acceptable to prove that
   something does *not* happen.
 - Network tests use `FakeHyperionServer` on 127.0.0.1 with an OS-assigned port; never fixed ports, never the internet.
-  The one exception is `Core.Tests/EndToEnd`: opt-in tests against a real Hyperion.ng container (skipped unless
+  The one exception is `Core.Tests/EndToEnd`: opt-in tests against a real Hyperion.ng or HyperHDR container (skipped unless
   `HYPERION_GRABBER_E2E_HOST` is set; see `docs/development/testing.md`).
 - Random data uses a fixed seed so failures reproduce.
 - Protocol tests verify encoded bytes with the official runtime (`OfficialHyperionCodec`), not with our own reader.

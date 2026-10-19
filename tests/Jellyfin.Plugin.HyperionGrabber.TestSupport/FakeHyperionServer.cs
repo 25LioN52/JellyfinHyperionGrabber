@@ -26,12 +26,18 @@ public enum RegistrationMode
 /// <summary>
 /// In-process Hyperion FlatBuffers server on 127.0.0.1 that records every request it receives.
 /// </summary>
+/// <remarks>
+/// Replies like Hyperion.ng 2.2 (<c>FlatBufferClient.cpp</c>): every command gets one reply, and a success reply
+/// carries <c>registered</c> = the connection's registered priority (-1 before a Register and after the client
+/// cleared its own priority). An image or color for a priority the instance does not know is answered with an extra
+/// reply <c>registered = -1</c>, Hyperion.ng's request to register again (see <see cref="ClearPrioritiesRemotely"/>).
+/// </remarks>
 public sealed class FakeHyperionServer : IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stop = new();
     private readonly Channel<ReceivedRequest> _requests = Channel.CreateUnbounded<ReceivedRequest>();
-    private readonly ConcurrentBag<TcpClient> _connections = [];
+    private readonly ConcurrentBag<Connection> _connections = [];
     private readonly ConcurrentBag<Task> _handlers = [];
     private readonly Task _acceptLoop;
     private int _connectionCount;
@@ -94,12 +100,25 @@ public sealed class FakeHyperionServer : IAsyncDisposable
     /// <returns>Whether a request was available.</returns>
     public bool TryReadRequest(out ReceivedRequest? request) => _requests.Reader.TryRead(out request);
 
+    /// <summary>
+    /// Clears every client's priority the way Hyperion.ng's remote control (JSON-RPC <c>clear</c>) does: the
+    /// connections stay open, and every image or color is answered with a request to register again until the client
+    /// sends Register.
+    /// </summary>
+    public void ClearPrioritiesRemotely()
+    {
+        foreach (var connection in _connections)
+        {
+            connection.KnownToInstance = false;
+        }
+    }
+
     /// <summary>Closes every client connection from the server side.</summary>
     public void DropConnections()
     {
         foreach (var connection in _connections)
         {
-            connection.Dispose();
+            connection.Client.Dispose();
         }
     }
 
@@ -128,10 +147,10 @@ public sealed class FakeHyperionServer : IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                var client = await _listener.AcceptTcpClientAsync(cancellationToken);
+                var connection = new Connection(await _listener.AcceptTcpClientAsync(cancellationToken));
                 Interlocked.Increment(ref _connectionCount);
-                _connections.Add(client);
-                _handlers.Add(HandleClientAsync(client, cancellationToken));
+                _connections.Add(connection);
+                _handlers.Add(HandleClientAsync(connection, cancellationToken));
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException)
@@ -140,12 +159,12 @@ public sealed class FakeHyperionServer : IAsyncDisposable
         }
     }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken cancellationToken)
+    private async Task HandleClientAsync(Connection connection, CancellationToken cancellationToken)
     {
         await Task.Yield();
         try
         {
-            var stream = client.GetStream();
+            var stream = connection.Client.GetStream();
             var header = new byte[4];
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -164,10 +183,16 @@ public sealed class FakeHyperionServer : IAsyncDisposable
                 }
 
                 await _requests.Writer.WriteAsync(request, cancellationToken);
-                var reply = CreateReply(request);
+                var reply = CreateReply(connection, request);
                 if (reply is not null)
                 {
                     await stream.WriteAsync(WithSizePrefix(reply), cancellationToken);
+                }
+
+                if (request is ImageRequest or ColorRequest && !connection.KnownToInstance)
+                {
+                    // Hyperion::setInputImage → globalRegRequired → FlatBufferClient::registationRequired.
+                    await stream.WriteAsync(WithSizePrefix(OfficialHyperionCodec.EncodeReply(registered: -1)), cancellationToken);
                 }
             }
         }
@@ -177,19 +202,54 @@ public sealed class FakeHyperionServer : IAsyncDisposable
         }
         finally
         {
-            client.Dispose();
+            connection.Client.Dispose();
         }
     }
 
-    private byte[]? CreateReply(ReceivedRequest request) => request switch
+    private byte[]? CreateReply(Connection connection, ReceivedRequest request)
     {
-        RegisterRequest register => Registration switch
+        switch (request)
         {
-            RegistrationMode.Accept => OfficialHyperionCodec.EncodeReply(registered: register.Priority),
-            RegistrationMode.Reject => OfficialHyperionCodec.EncodeReply(error: RejectionMessage),
-            _ => null,
-        },
-        InvalidRequest invalid => OfficialHyperionCodec.EncodeReply(error: invalid.Reason),
-        _ => OfficialHyperionCodec.EncodeReply(), // Hyperion.ng answers every command with an empty success reply.
-    };
+            case RegisterRequest register:
+                switch (Registration)
+                {
+                    case RegistrationMode.Accept:
+                        connection.Priority = register.Priority;
+                        connection.KnownToInstance = true;
+                        return OfficialHyperionCodec.EncodeReply(registered: register.Priority);
+                    case RegistrationMode.Reject:
+                        return OfficialHyperionCodec.EncodeReply(error: RejectionMessage);
+                    default:
+                        return null;
+                }
+
+            case InvalidRequest invalid:
+                return OfficialHyperionCodec.EncodeReply(error: invalid.Reason);
+
+            case ClearRequest clear when clear.Priority == connection.Priority:
+                // Clearing its own priority: Hyperion.ng forgets the connection's priority until it registers again.
+                connection.Priority = -1;
+                connection.KnownToInstance = false;
+                break;
+        }
+
+        return OfficialHyperionCodec.EncodeReply(registered: connection.Priority == 0 ? -1 : connection.Priority);
+    }
+
+    private sealed class Connection(TcpClient client)
+    {
+        private volatile bool _knownToInstance;
+
+        public TcpClient Client { get; } = client;
+
+        /// <summary>Gets or sets the registered priority: 0 before a Register, -1 after the client cleared it.</summary>
+        public int Priority { get; set; }
+
+        /// <summary>Gets or sets a value indicating whether the instance has the priority (Hyperion's priority muxer).</summary>
+        public bool KnownToInstance
+        {
+            get => _knownToInstance;
+            set => _knownToInstance = value;
+        }
+    }
 }

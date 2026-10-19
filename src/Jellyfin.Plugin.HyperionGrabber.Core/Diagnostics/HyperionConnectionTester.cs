@@ -42,7 +42,7 @@ public sealed class HyperionConnectionTester
         var started = _timeProvider.GetTimestamp();
         try
         {
-            var client = await HyperionClient.ConnectAsync(options, _clientLogger, cancellationToken).ConfigureAwait(false);
+            var client = await HyperionClient.ConnectAsync(options, _clientLogger, _timeProvider, cancellationToken).ConfigureAwait(false);
             await client.DisposeAsync().ConfigureAwait(false);
             var elapsed = _timeProvider.GetElapsedTime(started);
             return new HyperionTestResult(
@@ -78,7 +78,7 @@ public sealed class HyperionConnectionTester
         var started = _timeProvider.GetTimestamp();
         try
         {
-            var client = await HyperionClient.ConnectAsync(options, _clientLogger, cancellationToken).ConfigureAwait(false);
+            var client = await HyperionClient.ConnectAsync(options, _clientLogger, _timeProvider, cancellationToken).ConfigureAwait(false);
             await using (client.ConfigureAwait(false))
             {
                 var frames = await TestPatternPlayer.PlayAsync(client, patternOptions, _timeProvider, cancellationToken).ConfigureAwait(false);

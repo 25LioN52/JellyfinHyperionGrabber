@@ -35,8 +35,13 @@ Field slot = declaration index; a union takes two slots (type, value); vtable of
 ## Behaviour
 
 - Register first. Success reply has `registered = priority`; failure has `error`.
-- Hyperion.ng accepts priorities **100-199** only and replies with an error otherwise. HyperHDR has no range check.
-- Both servers send a reply after most commands (Hyperion.ng: success reply after every image). Drain them.
+- Hyperion.ng accepts priorities **100-199** only and replies with an error otherwise. HyperHDR 22 sends no error and
+  ignores priorities outside 50-250.
+- Both servers reply to every command. Image replies carry `registered = <connection's priority>`; HyperHDR answers
+  Color and Clear with an empty reply (reads as `registered = -1`). Drain them.
+- Hyperion.ng sends an extra `registered = -1` reply (no error) when an instance gets an image for a priority it does
+  not have, e.g. after a JSON-RPC `clear` from its remote control; it drops those images until the client registers
+  again. After the client's own Clear it forgets the priority too. HyperHDR registers missing priorities itself.
 - Both servers drop a connection that sends nothing for a configurable timeout, and clear the client's priority
   when the connection closes. To hold the last frame (pause), resend it periodically.
 - `Clear{priority:-1}` clears all priorities: never send it.
@@ -52,6 +57,11 @@ Field slot = declaration index; a union takes two slots (type, value); vtable of
   the wait for the lock; a started write finishes or fails within the write timeout, so messages are never cut) →
   receive loop draining replies → Dispose sends Clear, closes the socket, then waits for in-flight senders. Safe to
   send concurrently with Dispose (senders get `HyperionConnectionException`).
+- A non-error reply with `registered = -1` sets a flag in the receive loop (which never writes); the next image or
+  color sends Register again first, under the write lock, at most once a second (`TimeProvider`), logged at Debug.
+  Clear never registers first.
+- `FakeHyperionServer` replies like Hyperion.ng 2.2 (`registered` = the connection's priority) and
+  `ClearPrioritiesRemotely()` makes it ask for a new Register like Hyperion.ng's remote control clear.
 - Verification: `OfficialHyperionCodec` (tests) decodes with Google.FlatBuffers and its verifier, the same checks
   Hyperion's C++ server runs. Note: Google.FlatBuffers 25.2.10's `Verifier.VerifyUnion` passes a wrong type to its
   callback, so the harness verifies unions as type field + `VerifyTable`.

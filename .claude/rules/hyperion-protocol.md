@@ -17,6 +17,8 @@ Read `docs/development/hyperion-protocol.md` (or the `hyperion-protocol` skill) 
 - Priorities 100-199 only (Hyperion.ng rejects others). Lower number wins.
 - Servers reply to most commands and drop idle connections after a timeout, so: always drain replies, and keep
   sending (repeat the last frame) while paused if the LEDs must hold.
+- A reply with `registered = -1` and no error is Hyperion.ng asking for a new Register (its remote control cleared our
+  priority); `HyperionClient` registers again before the next image, at most once a second, never before a Clear.
 - `FlatBufferWriter` lays buffers out front to back with 4-byte field slots; uoffsets must point forward.
 - Every encoder change: run the official-verifier tests in `HyperionRequestWriterTests`; update the golden bytes
   test only if the layout intentionally changed, and document why in the PR.
