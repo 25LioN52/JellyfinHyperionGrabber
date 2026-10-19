@@ -62,9 +62,10 @@ computes for its LEDs.
 | `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
 | `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
 
-Colors are compared by which channels are on, because the servers' gamma, brightness compensation and smoothing
-change the values; reads are repeated until they match or 15 s pass (`Eventually`), since a server handles the
-FlatBuffers and JSON-RPC connections independently.
+Colors are compared by which channels are on, because Hyperion.ng's brightness compensation and smoothing change the
+values (yellow arrives as `128,128,0`; HyperHDR reports the exact colors, before its color processing). Reads are
+repeated until they match or 15 s pass (`Eventually`), since a server handles the FlatBuffers and JSON-RPC
+connections independently.
 
 The two servers share most of the JSON-RPC API. `HyperionServerApi` holds the common part (`HyperionJsonRpc` is only
 the connection); `HyperionNgApi` and `HyperHdrApi` cover the differences:
@@ -73,7 +74,7 @@ the connection); `HyperionNgApi` and `HyperHdrApi` cover the differences:
 | --- | --- | --- |
 | Instance of a request | `instance` field in the request | per connection: `instance` / `switchTo` (the schemas reject an `instance` field); every command fails with "Not ready" while that instance is stopped |
 | LED colors | `instance-data` / `getLedSnapshot`: what goes to the device, after smoothing | `ledcolors` / `ledstream-start`: a stream of flat `[r, g, b, ...]` arrays, before smoothing |
-| Settings | `config` / `getconfig`, `setconfig` for any instance, running or not | for the connection's running instance only; `setconfig` takes the full settings, so they are read, changed and written back |
+| Settings | `config` / `getconfig`, `setconfig` for any instance, running or not | for the connection's running instance only; `setconfig` checks the full settings, so they are read, changed and written back. A new instance's `getconfig` came back without `foregroundEffect`; `setconfig` fills in defaults for what is missing |
 | Factory password | `hyperion` | `hyperhdr` |
 
 - **The servers.** `tests/e2e/hyperion-ng/Dockerfile` installs the `hyperion` package from Hyperion's official APT

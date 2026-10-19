@@ -67,7 +67,7 @@ of 1 s or more ([ADR 0008](adr/0008-streaming-session-pacing.md)).
 **Images vs LED count.** Hyperion averages the picture regions configured in its LED layout, so a small picture
 (around 64-160 px wide) is enough and keeps CPU use on the Hyperion side low. Keep the source aspect ratio.
 
-**Origin.** Hyperion.ng lists a FlatBuffers client as `<origin>@<client address>` with component `FLATBUFSERVER`;
+**Origin.** Both servers list a FlatBuffers client as `<origin>@<client address>` with component `FLATBUFSERVER`;
 the address comes from Qt's dual-stack socket, so IPv4 clients appear as `::ffff:a.b.c.d`.
 
 ## Multiple instances
