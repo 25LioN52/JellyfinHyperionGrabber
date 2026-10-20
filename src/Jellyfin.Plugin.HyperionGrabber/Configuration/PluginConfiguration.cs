@@ -95,12 +95,9 @@ public class PluginConfiguration : BasePluginConfiguration
         {
             PlaybackTarget.Create(HyperionName, Hyperion(HyperionHost, HyperionPort, HyperionPriority), DeviceIds(PlaybackDevices)),
         };
-        foreach (var target in AdditionalTargets ?? [])
+        foreach (var target in (AdditionalTargets ?? []).Where(target => target is not null && !string.IsNullOrWhiteSpace(target.Host)))
         {
-            if (target is not null && !string.IsNullOrWhiteSpace(target.Host))
-            {
-                targets.Add(PlaybackTarget.Create(target.Name, Hyperion(target.Host, target.Port, target.Priority), DeviceIds(target.Devices)));
-            }
+            targets.Add(PlaybackTarget.Create(target.Name, Hyperion(target.Host, target.Port, target.Priority), DeviceIds(target.Devices)));
         }
 
         return targets;

@@ -54,7 +54,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
 
     /// <summary>Returns the lossless 10-bit BT.2020 HDR clip (<see cref="HdrCodes"/>) with a transfer: <c>smpte2084</c> (PQ) or
     /// <c>arib-std-b67</c> (HLG).</summary>
-    public string HdrClipPath(string transfer) => Path.Combine(_directory, transfer + ".mkv");
+    public string HdrClipPath(string transfer) => Path.Join(_directory, transfer + ".mkv");
 
     public async ValueTask InitializeAsync()
     {
@@ -106,7 +106,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// </summary>
     public async Task<string?> GetHevcHdrClipAsync()
     {
-        var path = Path.Combine(_directory, "smpte2084-hevc.mkv");
+        var path = Path.Join(_directory, "smpte2084-hevc.mkv");
         if (!File.Exists(path))
         {
             var (exitCode, _) = await RunAsync(

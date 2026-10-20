@@ -346,12 +346,10 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         }
 
         var stopping = new List<(PlaybackTargetKey Key, Task<ProblemReport?> Stop)>(keys.Count);
-        foreach (var key in keys)
+        foreach (var key in keys.Where(_active.ContainsKey))
         {
-            if (_active.Remove(key, out var active))
-            {
-                stopping.Add((key, StopSessionAsync(active)));
-            }
+            stopping.Add((key, StopSessionAsync(_active[key])));
+            _active.Remove(key);
         }
 
         Publish();
