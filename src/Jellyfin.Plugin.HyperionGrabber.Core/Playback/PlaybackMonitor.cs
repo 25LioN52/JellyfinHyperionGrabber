@@ -10,19 +10,21 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 
 /// <summary>
-/// Turns playback reports into at most one running <see cref="IGrabSession"/> for the (single) Hyperion target.
+/// Turns playback reports into at most one running <see cref="IGrabSession"/> per <see cref="PlaybackTarget"/>.
 /// </summary>
 /// <remarks>
 /// <para><see cref="Post"/> and <see cref="UpdateFilter"/> never block, so they are safe to call from the media server's
 /// event handlers. Reports are queued in a small bounded queue (the oldest is dropped if it ever fills) and processed in
 /// order on the monitor's own task, which is also the only caller of the sessions.</para>
-/// <para>Of all playbacks that match the <see cref="PlaybackFilter"/>, the one that started most recently drives the
-/// target. When it stops, the most recent remaining matching playback takes over with its last reported state.</para>
+/// <para>Targets are independent. For each, of all playbacks that match it (its devices, the filter's users), the one
+/// that started most recently drives it. When that playback stops, the most recent remaining matching playback takes
+/// over with its last reported state. A playback on a device selected for two targets drives both. A target whose
+/// server or priority changes (a new <see cref="PlaybackTargetKey"/>) is a new target: its session restarts.</para>
 /// <para>A progress report for a session the monitor has not seen start (for example after a server restart or when a
 /// device is added to the filter mid-playback) counts as a start; a report with a different item restarts the
 /// session.</para>
-/// <para><see cref="GetStatus"/> reads what the processing task published (the followed playback and the last
-/// problem) plus the session's own status, so it never waits for the queue.</para>
+/// <para><see cref="GetStatus"/> reads what the processing task published (each target's followed playback and last
+/// problem) plus the sessions' own status, so it never waits for the queue.</para>
 /// </remarks>
 public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusSource
 {
@@ -39,13 +41,15 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
 
     // Owned by the processing task.
     private readonly Dictionary<string, TrackedPlayback> _playing = new(StringComparer.Ordinal);
+    private readonly Dictionary<PlaybackTargetKey, ActiveSession> _active = [];
+    private readonly Dictionary<PlaybackTargetKey, ProblemReport> _lastProblems = []; // From sessions that stopped or could not start.
     private PlaybackFilter _appliedFilter = PlaybackFilter.Disabled;
-    private ActiveSession? _active;
     private long _sequence;
 
     private PlaybackFilter _filter = PlaybackFilter.Disabled;
-    private PublishedPlayback? _published; // Written by the processing task, read by GetStatus.
-    private ProblemReport? _lastProblem; // From sessions that stopped, or a session that could not start.
+
+    // Written by the processing task (a new dictionary each time, never changed afterwards), read by GetStatus.
+    private IReadOnlyDictionary<PlaybackTargetKey, PublishedTarget> _published = new Dictionary<PlaybackTargetKey, PublishedTarget>();
     private Task _processing = Task.CompletedTask;
     private int _started;
     private long _processedReports;
@@ -109,9 +113,9 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         _processing = Task.Run(ProcessAsync);
     }
 
-    /// <summary>Stops processing and disposes the running session, if any.</summary>
-    /// <param name="cancellationToken">Stops waiting; the session is still disposed in the background.</param>
-    /// <returns>A task that completes when the running session was disposed.</returns>
+    /// <summary>Stops processing and disposes the running sessions.</summary>
+    /// <param name="cancellationToken">Stops waiting; the sessions are still disposed in the background.</param>
+    /// <returns>A task that completes when the running sessions were disposed.</returns>
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _queue.Writer.TryComplete();
@@ -126,16 +130,21 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
     {
         var filter = Filter;
         var published = Volatile.Read(ref _published);
-        var session = published?.Session.GetStatus();
-        var playback = published is null || session is null
-            ? null
-            : new FollowedPlayback(published.DeviceName, published.Client, published.ItemId, published.Since, session);
-        return new PlaybackMonitorStatus(
-            filter.Enabled,
-            filter.DeviceIds.Count,
-            filter.UserIds.Count,
-            playback,
-            Latest(session?.LastProblem, Volatile.Read(ref _lastProblem)));
+        var targets = new List<TargetStatus>(filter.Targets.Count);
+        foreach (var target in filter.Targets)
+        {
+            published.TryGetValue(target.Key, out var state);
+            var playback = state?.Playback;
+            var session = playback?.Session.GetStatus();
+            targets.Add(new TargetStatus(
+                target.Name,
+                target.Key,
+                target.DeviceIds.Count,
+                playback is null || session is null ? null : new FollowedPlayback(playback.DeviceName, playback.Client, playback.ItemId, playback.Since, session),
+                Latest(session?.LastProblem, state?.LastProblem)));
+        }
+
+        return new PlaybackMonitorStatus(filter.Enabled, filter.UserIds.Count, targets);
     }
 
     private static ProblemReport? Latest(ProblemReport? first, ProblemReport? second)
@@ -158,7 +167,7 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         }
         finally
         {
-            await StopActiveAsync().ConfigureAwait(false);
+            await StopSessionsAsync([.. _active.Keys]).ConfigureAwait(false);
             _playing.Clear();
         }
     }
@@ -234,49 +243,84 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         if (!ReferenceEquals(filter, _appliedFilter))
         {
             _appliedFilter = filter;
-            Log.FilterChanged(_logger, filter.Enabled, filter.DeviceIds.Count, filter.UserIds.Count);
+            Log.FilterChanged(_logger, filter.Enabled, filter.Targets.Count, filter.DeviceIds.Count, filter.UserIds.Count);
         }
 
         // Runs once per playback report (a few per minute), not per frame, so LINQ is fine here.
-        var desired = _playing.Values
-            .Where(tracked => filter.Matches(tracked.State.DeviceId, tracked.State.UserId))
-            .MaxBy(tracked => tracked.Sequence);
-
-        if (_active is { } active && (desired is null || desired.Sequence != active.Sequence))
+        var desired = new Dictionary<PlaybackTargetKey, TrackedPlayback?>();
+        foreach (var target in filter.Targets)
         {
-            await StopActiveAsync().ConfigureAwait(false);
+            desired[target.Key] = _playing.Values
+                .Where(tracked => filter.Matches(target, tracked.State.DeviceId, tracked.State.UserId))
+                .MaxBy(tracked => tracked.Sequence);
         }
 
-        if (desired is null)
+        // Sessions of targets that are gone or now follow another playback stop together, so stopping one playback
+        // that drives several targets takes the time of one stop.
+        var stale = _active
+            .Where(pair => !desired.TryGetValue(pair.Key, out var playback) || playback?.Sequence != pair.Value.Sequence)
+            .Select(pair => pair.Key)
+            .ToList();
+        await StopSessionsAsync(stale).ConfigureAwait(false);
+
+        // A removed target's problems go with it (also those its session reported while stopping).
+        foreach (var key in _lastProblems.Keys.Where(key => !desired.ContainsKey(key)).ToList())
         {
-            return;
+            _lastProblems.Remove(key);
         }
 
-        if (_active is null)
+        foreach (var target in filter.Targets)
         {
-            StartSession(desired);
+            if (desired[target.Key] is not { } playback)
+            {
+                continue;
+            }
+
+            if (!_active.TryGetValue(target.Key, out var active))
+            {
+                StartSession(target, playback);
+            }
+            else if (playbackEvent?.SessionId == active.SessionId)
+            {
+                UpdateSession(active, playback.State);
+            }
         }
-        else if (playbackEvent?.SessionId == _active.SessionId)
+
+        Publish();
+    }
+
+    /// <summary>Publishes each target's playback and last problem for <see cref="GetStatus"/>.</summary>
+    private void Publish()
+    {
+        var published = new Dictionary<PlaybackTargetKey, PublishedTarget>();
+        foreach (var (key, active) in _active)
         {
-            UpdateSession(_active, desired.State);
+            published[key] = new PublishedTarget(active.Playback, _lastProblems.GetValueOrDefault(key));
         }
+
+        foreach (var (key, problem) in _lastProblems)
+        {
+            published.TryAdd(key, new PublishedTarget(null, problem));
+        }
+
+        Volatile.Write(ref _published, published);
     }
 
     [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A faulty session must not stop the monitor; the next report retries.")]
-    private void StartSession(TrackedPlayback playback)
+    private void StartSession(PlaybackTarget target, TrackedPlayback playback)
     {
         var state = playback.State;
         try
         {
-            var session = _factory.Start(state);
-            _active = new ActiveSession(state.SessionId, playback.Sequence, session);
-            Volatile.Write(ref _published, new PublishedPlayback(state.DeviceName, state.Client, state.ItemId, _timeProvider.GetUtcNow(), session));
-            Log.SessionStarted(_logger, state.DeviceName, state.Client);
+            var session = _factory.Start(state, target);
+            var published = new PublishedPlayback(state.DeviceName, state.Client, state.ItemId, _timeProvider.GetUtcNow(), session);
+            _active[target.Key] = new ActiveSession(state.SessionId, playback.Sequence, target.Name, published);
+            Log.SessionStarted(_logger, state.DeviceName, state.Client, target.Name);
         }
         catch (Exception ex)
         {
-            Log.SessionStartFailed(_logger, state.DeviceName, ex);
-            Volatile.Write(ref _lastProblem, new ProblemReport(_timeProvider.GetUtcNow(), $"Could not start the lights for playback on {state.DeviceName}: {ex.Message}"));
+            Log.SessionStartFailed(_logger, state.DeviceName, target.Name, ex);
+            _lastProblems[target.Key] = new ProblemReport(_timeProvider.GetUtcNow(), $"Could not start the lights for playback on {state.DeviceName}: {ex.Message}");
         }
     }
 
@@ -285,7 +329,7 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
     {
         try
         {
-            active.Session.Update(state);
+            active.Playback.Session.Update(state);
         }
         catch (Exception ex)
         {
@@ -293,27 +337,51 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         }
     }
 
-    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A faulty session must not stop the monitor.")]
-    private async Task StopActiveAsync()
+    /// <summary>Disposes the sessions of some targets at the same time; each dispose is bounded by the session.</summary>
+    private async Task StopSessionsAsync(List<PlaybackTargetKey> keys)
     {
-        if (_active is not { } active)
+        if (keys.Count == 0)
         {
             return;
         }
 
-        _active = null;
-        Volatile.Write(ref _published, null);
+        var stopping = new List<(PlaybackTargetKey Key, Task<ProblemReport?> Stop)>(keys.Count);
+        foreach (var key in keys.Where(_active.ContainsKey))
+        {
+            stopping.Add((key, StopSessionAsync(_active[key])));
+            _active.Remove(key);
+        }
+
+        Publish();
+        await Task.WhenAll(stopping.Select(pair => pair.Stop)).ConfigureAwait(false);
+
+        // Keep the stopped sessions' last problems for the status panel (merged here, on the processing task; all are done).
+        foreach (var (key, stop) in stopping)
+        {
+            if (Latest(await stop.ConfigureAwait(false), _lastProblems.GetValueOrDefault(key)) is { } problem)
+            {
+                _lastProblems[key] = problem;
+            }
+        }
+
+        Publish();
+    }
+
+    /// <returns>The stopped session's last problem, if any.</returns>
+    [SuppressMessage("Design", "CA1031:Do not catch general exception types", Justification = "A faulty session must not stop the monitor.")]
+    private async Task<ProblemReport?> StopSessionAsync(ActiveSession active)
+    {
+        var session = active.Playback.Session;
         try
         {
-            await active.Session.DisposeAsync().ConfigureAwait(false);
-            Log.SessionStopped(_logger, active.SessionId);
-
-            // Keep the stopped session's last problem for the status panel.
-            Volatile.Write(ref _lastProblem, Latest(active.Session.GetStatus().LastProblem, Volatile.Read(ref _lastProblem)));
+            await session.DisposeAsync().ConfigureAwait(false);
+            Log.SessionStopped(_logger, active.SessionId, active.TargetName);
+            return session.GetStatus().LastProblem;
         }
         catch (Exception ex)
         {
-            Log.SessionStopFailed(_logger, active.SessionId, ex);
+            Log.SessionStopFailed(_logger, active.SessionId, active.TargetName, ex);
+            return null;
         }
     }
 
@@ -321,26 +389,28 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
 
     private sealed record TrackedPlayback(PlaybackState State, long Sequence);
 
-    private sealed record ActiveSession(string SessionId, long Sequence, IGrabSession Session);
+    private sealed record ActiveSession(string SessionId, long Sequence, string TargetName, PublishedPlayback Playback);
 
     private sealed record PublishedPlayback(string DeviceName, string Client, Guid ItemId, DateTimeOffset Since, IGrabSession Session);
 
+    private sealed record PublishedTarget(PublishedPlayback? Playback, ProblemReport? LastProblem);
+
     private static partial class Log
     {
-        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Lights follow playback on {DeviceName} ({Client})")]
-        public static partial void SessionStarted(ILogger logger, string deviceName, string client);
+        [LoggerMessage(EventId = 1, Level = LogLevel.Information, Message = "Lights follow playback on {DeviceName} ({Client}) through {Target}")]
+        public static partial void SessionStarted(ILogger logger, string deviceName, string client, string target);
 
-        [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Lights stopped following playback session {SessionId}")]
-        public static partial void SessionStopped(ILogger logger, string sessionId);
+        [LoggerMessage(EventId = 2, Level = LogLevel.Information, Message = "Lights of {Target} stopped following playback session {SessionId}")]
+        public static partial void SessionStopped(ILogger logger, string sessionId, string target);
 
-        [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "Could not start the lights for playback on {DeviceName}")]
-        public static partial void SessionStartFailed(ILogger logger, string deviceName, Exception exception);
+        [LoggerMessage(EventId = 3, Level = LogLevel.Error, Message = "Could not start the lights of {Target} for playback on {DeviceName}")]
+        public static partial void SessionStartFailed(ILogger logger, string deviceName, string target, Exception exception);
 
         [LoggerMessage(EventId = 4, Level = LogLevel.Error, Message = "The lights session for {DeviceName} failed to handle a playback update")]
         public static partial void SessionUpdateFailed(ILogger logger, string deviceName, Exception exception);
 
-        [LoggerMessage(EventId = 5, Level = LogLevel.Error, Message = "The lights session for playback session {SessionId} failed to stop cleanly")]
-        public static partial void SessionStopFailed(ILogger logger, string sessionId, Exception exception);
+        [LoggerMessage(EventId = 5, Level = LogLevel.Error, Message = "The lights session of {Target} for playback session {SessionId} failed to stop cleanly")]
+        public static partial void SessionStopFailed(ILogger logger, string sessionId, string target, Exception exception);
 
         [LoggerMessage(EventId = 6, Level = LogLevel.Debug, Message = "Playback started on {DeviceName} ({DeviceId}, {Client}) by user {UserId}: item {ItemId}")]
         public static partial void PlaybackStarted(ILogger logger, string deviceName, string deviceId, string client, Guid userId, Guid itemId);
@@ -348,8 +418,8 @@ public sealed partial class PlaybackMonitor : IAsyncDisposable, IPlaybackStatusS
         [LoggerMessage(EventId = 7, Level = LogLevel.Debug, Message = "Playback stopped on {DeviceName} ({DeviceId})")]
         public static partial void PlaybackStopped(ILogger logger, string deviceName, string deviceId);
 
-        [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Playback filter: enabled {Enabled}, {DeviceCount} device(s), {UserCount} user(s) (0 = all users)")]
-        public static partial void FilterChanged(ILogger logger, bool enabled, int deviceCount, int userCount);
+        [LoggerMessage(EventId = 8, Level = LogLevel.Information, Message = "Playback filter: enabled {Enabled}, {TargetCount} Hyperion server(s), {DeviceCount} device(s), {UserCount} user(s) (0 = all users)")]
+        public static partial void FilterChanged(ILogger logger, bool enabled, int targetCount, int deviceCount, int userCount);
 
         [LoggerMessage(EventId = 9, Level = LogLevel.Warning, Message = "Dropped a playback report because the queue was full")]
         public static partial void ReportDropped(ILogger logger);

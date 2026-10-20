@@ -8,7 +8,7 @@
                 </div>
                 <p>Streams the video you are watching to <b>Hyperion.ng</b> or <b>HyperHDR</b> for ambient lighting.
                     LED layout, colors and smoothing are configured in Hyperion; this plugin only sends the picture.</p>
-                <p class="fieldDescription">Early preview: the lights follow playback of library videos on the devices you select. If Hyperion restarts during playback, the plugin reconnects by itself.</p>
+                <p class="fieldDescription">Early preview: the lights follow playback of library videos on the devices you select, one Hyperion server per TV. If Hyperion restarts during playback, the plugin reconnects by itself.</p>
             </div>
 
             <div class="verticalSection">
@@ -22,6 +22,12 @@
             <form id="HyperionGrabberConfigForm">
                 <div class="verticalSection">
                     <h3 class="sectionTitle">Hyperion server</h3>
+
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="HyperionName">Name (optional)</label>
+                        <input is="emby-input" type="text" id="HyperionName" name="HyperionName" maxlength="100" autocomplete="off" placeholder="Living room" />
+                        <div class="fieldDescription">Shown in the status when you have several Hyperion servers (see <b>More TVs</b> below).</div>
+                    </div>
 
                     <div class="inputContainer">
                         <label class="inputLabel inputLabelUnfocused" for="HyperionHost">Host</label>
@@ -98,7 +104,7 @@
 
                     <h4>Devices</h4>
                     <div id="PlaybackDeviceList" class="checkboxList"></div>
-                    <div class="fieldDescription">Devices with a recent Jellyfin session, most recent first. If your TV is missing, start playing something on it and press <b>Refresh</b>.</div>
+                    <div class="fieldDescription">Playback on these devices drives the Hyperion server above. Devices with a recent Jellyfin session, most recent first. If your TV is missing, start playing something on it and press <b>Refresh</b>.</div>
 
                     <h4>Users (optional)</h4>
                     <div id="PlaybackUserList" class="checkboxList"></div>
@@ -108,6 +114,16 @@
                         <span>Refresh</span>
                     </button>
                     <div id="PlaybackResult" class="fieldDescription" role="status" aria-live="polite" hidden></div>
+                </div>
+
+                <div class="verticalSection">
+                    <h3 class="sectionTitle">More TVs</h3>
+                    <p class="fieldDescription">For LEDs on another TV, add the Hyperion.ng or HyperHDR server that drives them and tick the devices that play on that TV. Each TV needs its own server: all instances of one server show the same picture. Users, frame rate and timing apply to every server.</p>
+                    <div id="AdditionalTargetList"></div>
+                    <button is="emby-button" type="button" id="AddTarget" class="raised button-alt block">
+                        <span>Add a Hyperion server</span>
+                    </button>
+                    <div id="AdditionalTargetResult" class="fieldDescription" role="status" aria-live="polite" hidden></div>
                 </div>
 
                 <div class="verticalSection">

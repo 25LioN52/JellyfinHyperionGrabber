@@ -17,8 +17,8 @@ LED device they support.
 
 > [!NOTE]
 > **Early preview (v0.x).** The current version streams library videos to Hyperion/HyperHDR while they play on the
-> devices you select, and plays an LED layout test pattern. Per-device latency calibration and HDR tone mapping are
-> next, see the [roadmap](https://25lion52.github.io/JellyfinHyperionGrabber/roadmap/).
+> devices you select (one Hyperion server per TV), tone maps HDR and Dolby Vision, and plays an LED layout test
+> pattern. Per-device latency calibration is next, see the [roadmap](https://25lion52.github.io/JellyfinHyperionGrabber/roadmap/).
 
 ## Why
 
@@ -34,8 +34,9 @@ in step with your client**, and sends those frames to Hyperion. That means:
 - **Your LED layout stays in Hyperion.** Any number of LEDs, any placement (even if they do not run around the TV),
   WLED, Philips Hue, Adalight, and the color calibration, smoothing and black-border detection you already know.
 - **Zero-lag is possible:** frames exist *before* the TV shows them, so the plugin can compensate for LED latency
-  instead of always being late *(planned)*.
-- **HDR done right:** HDR10 and Dolby Vision are tone-mapped before sending, so colors are not washed out *(planned)*.
+  instead of always being late.
+- **HDR done right:** HDR10, HLG and Dolby Vision (including profile 5) are tone mapped to SDR before sending, so
+  colors are not washed out.
 
 ## How it works
 

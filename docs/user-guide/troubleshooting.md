@@ -59,6 +59,34 @@ When playback stops, `Stopped streaming to Hyperion: N frames sent, M dropped` t
 mean Hyperion, the network or the decoder could not keep up: lower the **Frame rate** on the plugin page, or enable
 hardware decoding for the video's codec in Jellyfin.
 
+## Two TVs show the same picture
+
+The two TVs' LEDs are two instances of one Hyperion server: every running instance gets the same picture. Run a
+second Hyperion server for the second TV and add it under **More TVs**; see
+[Several TVs](hyperion-setup.md#several-tvs). If they already are two servers, check which devices are ticked for each
+one on the plugin page: a device ticked for both drives both.
+
+## The LEDs at the top and bottom stay dark with widescreen films
+
+Those LEDs show the black bars of the film. Turn on Hyperion's **Blackbar detector** (HyperHDR has it off by default)
+for every instance; see [Black bars](hyperion-setup.md#black-bars-widescreen-films). If it is on and the bars are not
+detected, raise its **Threshold** a little: some encodes have dark grey instead of black bars.
+
+## Colors look pale or wrong with HDR movies
+
+The **Picture** line of the [status](configuration.md#status) and the log line after `Streaming 160x90 …` show how the
+plugin handles the video:
+
+| Picture line / log says | Meaning | Fix |
+| --- | --- | --- |
+| `HDR10, tone mapped to SDR with tonemapx` / `Hdr10 video: tone mapping it to SDR with Tonemapx` | Working as intended | If the colors still look off, compare with an SDR video: Hyperion's color calibration and brightness apply the same way. |
+| `SDR` for a video you know is HDR | Jellyfin's media info has no HDR flags for the file | Refresh the item's metadata (**⋮ → Refresh metadata → Replace all metadata**) or rescan the library. |
+| `not tone mapped: the colors look pale` / `video is sent without tone mapping` | Jellyfin's FFmpeg has neither `tonemapx` nor `zscale` | Use Jellyfin's bundled FFmpeg (jellyfin-ffmpeg); a custom FFmpeg needs zimg. |
+| `Dolby Vision profile 5, tone mapped with zscale: only Jellyfin's FFmpeg (tonemapx) gets its colors right` | A custom FFmpeg cannot apply Dolby Vision metadata; the picture is green and purple | Use Jellyfin's bundled FFmpeg. |
+
+If FFmpeg fails with a 10-bit format on your GPU, the plugin falls back to decoding on the CPU by itself (warning
+`Hardware decoding with … failed`); please report it with the FFmpeg message from the log.
+
 ## Hyperion restarted during playback
 
 When Hyperion restarts (a Docker container update, a NAS reboot, some settings changes) or the network drops, the

@@ -54,6 +54,8 @@ public class FfmpegFrameSourceOptionsTests
     [InlineData("OneBuffer")]
     [InlineData("ManyBuffers")]
     [InlineData("UnknownAcceleration")]
+    [InlineData("UnknownDynamicRange")]
+    [InlineData("UnknownToneMapper")]
     [InlineData("ExtremeAspect")]
     public void GetValidationErrors_ReportsEachInvalidValue(string problem)
     {
@@ -72,6 +74,8 @@ public class FfmpegFrameSourceOptionsTests
             "OneBuffer" => Valid with { BufferCount = 1 },
             "ManyBuffers" => Valid with { BufferCount = 17 },
             "UnknownAcceleration" => Valid with { HardwareAcceleration = (HardwareAcceleration)99 },
+            "UnknownDynamicRange" => Valid with { DynamicRange = (VideoDynamicRange)99 },
+            "UnknownToneMapper" => Valid with { ToneMapper = (HdrToneMapper)99 },
             "ExtremeAspect" => Valid with { SourceWidth = 10, SourceHeight = 10000 },
             _ => throw new ArgumentOutOfRangeException(nameof(problem)),
         };
@@ -116,5 +120,28 @@ public class FfmpegFrameSourceOptionsTests
 
         Assert.Equal(HardwareAcceleration.None, options.HardwareAcceleration);
         Assert.Null(options.HardwareDevice);
+    }
+
+    [Fact]
+    public void Create_TakesTheDynamicRangeFromTheVideoAndTheToneMapperFromTheSettings()
+    {
+        var settings = new FfmpegSettings { FfmpegPath = "ffmpeg", ToneMapper = HdrToneMapper.Tonemapx };
+        var video = new VideoInput("/media/a.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.DolbyVision };
+
+        var options = FfmpegFrameSourceOptions.Create(settings, video, TimeSpan.Zero);
+
+        Assert.Equal(VideoDynamicRange.DolbyVision, options.DynamicRange);
+        Assert.Equal(HdrToneMapper.Tonemapx, options.ToneMapper);
+        Assert.True(options.IsToneMapped);
+    }
+
+    [Theory]
+    [InlineData(VideoDynamicRange.Sdr, HdrToneMapper.Tonemapx, false)]
+    [InlineData(VideoDynamicRange.Hdr10, HdrToneMapper.None, false)]
+    [InlineData(VideoDynamicRange.Hdr10, HdrToneMapper.Zscale, true)]
+    [InlineData(VideoDynamicRange.Hlg, HdrToneMapper.Tonemapx, true)]
+    public void IsToneMapped_OnlyForHdrWithAToneMapper(VideoDynamicRange range, HdrToneMapper toneMapper, bool expected)
+    {
+        Assert.Equal(expected, (Valid with { DynamicRange = range, ToneMapper = toneMapper }).IsToneMapped);
     }
 }

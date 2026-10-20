@@ -21,6 +21,16 @@ Both builds come from the same source code and the same release, served from one
 The plugin only uses the parts of the FlatBuffers protocol that both servers implement identically (Register,
 RawImage RGB, Clear).
 
+## FFmpeg
+
+The plugin decodes with the FFmpeg Jellyfin uses (**Dashboard → Playback → Transcoding**).
+
+| FFmpeg | HDR10, HDR10+, HLG | Dolby Vision profile 5 |
+| --- | --- | --- |
+| Jellyfin's bundled FFmpeg (jellyfin-ffmpeg 7, in every official package and Docker image) | Tone mapped (`tonemapx`) | Tone mapped with correct colors |
+| Other builds with zimg (`zscale`) | Tone mapped | Wrong colors (green and purple) |
+| Other builds without zimg | Pale colors | Wrong colors |
+
 ## Jellyfin clients
 
 Any client that reports playback to the server works. Sync precision depends on how often and how precisely it

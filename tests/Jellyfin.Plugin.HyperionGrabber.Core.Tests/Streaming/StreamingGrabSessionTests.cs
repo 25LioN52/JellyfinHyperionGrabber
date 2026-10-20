@@ -33,7 +33,8 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     private readonly ConcurrentQueue<DateTimeOffset> _connectTimes = new();
     private readonly FakeClock _clock = new();
     private RecordingConnection _connection = new();
-    private StreamingSettings _settings = new() { Hyperion = new HyperionClientOptions { Host = "hyperion.local" }, FramesPerSecond = 10 };
+    private StreamingSettings _settings = new() { FramesPerSecond = 10 };
+    private PlaybackTarget _target = PlaybackTarget.Create("TV", new HyperionClientOptions { Host = "hyperion.local" }, ["kodi"]);
     private VideoInputResult _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 1920, 1080, "h264"));
     private FfmpegSettings _ffmpeg = new() { FfmpegPath = "ffmpeg" };
     private Exception? _connectFailure;
@@ -689,6 +690,50 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task NewSessionOfAnotherTarget_DoesNotWaitForTheStoppedSession()
+    {
+        var first = await StartStreamingAsync();
+        Source.Push(3);
+        await TickAsync(first);
+        var clearing = new TaskCompletionSource();
+        _connection.DisposeGate = clearing.Task;
+        var stop = first.DisposeAsync().AsTask();
+        await TestHelpers.WaitUntilAsync(() =>
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+            return stop.IsCompleted;
+        });
+
+        try
+        {
+            _target = PlaybackTarget.Create("Bedroom", new HyperionClientOptions { Host = "bedroom.local" }, ["shield"]);
+            var second = await StartStreamingAsync();
+            Source.Push(3);
+            await TickAsync(second);
+
+            // Another server: connected at once, although the first session is still clearing its own priority.
+            Assert.Equal(2, _connects);
+            Assert.Equal("bedroom.local", _connection.Options?.Host);
+        }
+        finally
+        {
+            clearing.SetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Start_SendsToTheTargetsServer()
+    {
+        _target = PlaybackTarget.Create("Bedroom", new HyperionClientOptions { Host = "bedroom.local", Port = 19401, Priority = 120 }, ["shield"]);
+
+        var session = await StartStreamingAsync();
+        Source.Push(2);
+        await TickAsync(session);
+
+        Assert.Equal(("bedroom.local", 19401, 120), (_connection.Options?.Host, _connection.Options?.Port, _connection.Options?.Priority));
+    }
+
+    [Fact]
     public async Task DisposeAsync_ReleasesDecoderAndHyperionAndReturnsHeldFrames()
     {
         var session = await StartStreamingAsync();
@@ -739,7 +784,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     [Fact]
     public async Task Start_WithoutHyperionServer_DoesNotStream()
     {
-        _settings = new StreamingSettings();
+        _target = PlaybackTarget.Create("TV", null, ["kodi"]);
 
         var session = Start(State(TimeSpan.Zero));
 
@@ -804,6 +849,53 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         Assert.Equal(HardwareAcceleration.None, status.Decoder);
         Assert.Equal(TimeSpan.FromMinutes(5), status.Position);
         Assert.Null(status.Problem);
+    }
+
+    [Fact]
+    public async Task Start_HdrVideo_IsTonemappedWithTheServersBestFilter()
+    {
+        _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.Hdr10 });
+        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Tonemapx };
+
+        var session = await StartStreamingAsync();
+
+        Assert.Equal((VideoDynamicRange.Hdr10, HdrToneMapper.Tonemapx), (Source.Options.DynamicRange, Source.Options.ToneMapper));
+        Assert.Equal(new PictureFormat(160, 90, VideoDynamicRange.Hdr10, HdrToneMapper.Tonemapx), session.GetStatus().Picture);
+        AssertLogged(LogLevel.Information, "Hdr10 video: tone mapping it to SDR with Tonemapx");
+    }
+
+    [Fact]
+    public async Task Start_SdrVideo_ShowsThePictureWithoutToneMapping()
+    {
+        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Tonemapx };
+
+        var session = await StartStreamingAsync();
+
+        Assert.Equal(new PictureFormat(160, 90, VideoDynamicRange.Sdr, HdrToneMapper.None), session.GetStatus().Picture);
+        Assert.DoesNotContain(_logs.Collector.GetSnapshot(), r => r.Message.Contains("tone mapping", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Start_HdrVideoWithoutAToneMapper_WarnsThatTheColorsArePale()
+    {
+        _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.Hlg });
+
+        var session = await StartStreamingAsync();
+
+        Assert.Equal(new PictureFormat(160, 90, VideoDynamicRange.Hlg, HdrToneMapper.None), session.GetStatus().Picture);
+        AssertLogged(LogLevel.Warning, "Hlg video is sent without tone mapping");
+    }
+
+    [Fact]
+    public async Task Start_DolbyVisionProfile5WithZscale_WarnsThatOnlyTonemapxGetsTheColorsRight()
+    {
+        _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.DolbyVision });
+        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Zscale };
+
+        var session = await StartStreamingAsync();
+
+        Assert.Equal(HdrToneMapper.Zscale, session.GetStatus().Picture?.ToneMapper);
+        AssertLogged(LogLevel.Warning, "only Jellyfin's FFmpeg (tonemapx) gets its colors right");
     }
 
     [Fact]
@@ -1043,7 +1135,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
                 _clockOptions = options;
                 return _clock;
             });
-        _session = Assert.IsType<StreamingGrabSession>(_factory.Start(state));
+        _session = Assert.IsType<StreamingGrabSession>(_factory.Start(state, _target));
         return _session;
     }
 

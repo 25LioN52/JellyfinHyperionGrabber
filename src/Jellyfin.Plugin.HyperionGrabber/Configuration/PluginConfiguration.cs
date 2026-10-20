@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -19,7 +20,7 @@ namespace Jellyfin.Plugin.HyperionGrabber.Configuration;
 /// </remarks>
 public class PluginConfiguration : BasePluginConfiguration
 {
-    /// <summary>Gets or sets the host name or IP address of the Hyperion.ng / HyperHDR server.</summary>
+    /// <summary>Gets or sets the host name or IP address of the (first) Hyperion.ng / HyperHDR server.</summary>
     public string HyperionHost { get; set; } = string.Empty;
 
     /// <summary>Gets or sets the FlatBuffers server port.</summary>
@@ -27,6 +28,16 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the priority to register (100-199; lower wins).</summary>
     public int HyperionPriority { get; set; } = HyperionDefaults.Priority;
+
+    /// <summary>Gets or sets the name of the first Hyperion server, shown in the status; optional.</summary>
+    public string HyperionName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets more Hyperion servers (one per TV), each with its own devices. The first server is
+    /// <see cref="HyperionHost"/> with <see cref="PlaybackDevices"/>, as before multiple targets existed.
+    /// </summary>
+    [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration (XML on disk, JSON from the configuration page), which needs a setter.")]
+    public Collection<HyperionTargetConfiguration> AdditionalTargets { get; set; } = [];
 
     /// <summary>Gets or sets the number of frames per second sent to Hyperion during playback (1-60).</summary>
     public int FramesPerSecond { get; set; } = FfmpegFrameSourceOptions.DefaultFramesPerSecond;
@@ -49,7 +60,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets a value indicating whether playback on the selected devices drives the lights.</summary>
     public bool PlaybackEnabled { get; set; }
 
-    /// <summary>Gets or sets the devices whose playback drives the lights. None selected means no playback does.</summary>
+    /// <summary>Gets or sets the devices whose playback drives the first Hyperion server's lights.</summary>
     [SuppressMessage("Usage", "CA2227:Collection properties should be read only", Justification = "Jellyfin deserializes the configuration (XML on disk, JSON from the configuration page), which needs a setter.")]
     public Collection<PlaybackDeviceSelection> PlaybackDevices { get; set; } = [];
 
@@ -58,12 +69,9 @@ public class PluginConfiguration : BasePluginConfiguration
     public Collection<PlaybackUserSelection> PlaybackUsers { get; set; } = [];
 
     /// <summary>Creates the streaming settings described by these settings.</summary>
-    /// <returns>The settings; <see cref="StreamingSettings.Hyperion"/> is <see langword="null"/> without a host.</returns>
+    /// <returns>The settings.</returns>
     public StreamingSettings ToStreamingSettings() => new()
     {
-        Hyperion = string.IsNullOrWhiteSpace(HyperionHost)
-            ? null
-            : new HyperionClientOptions { Host = HyperionHost.Trim(), Port = HyperionPort, Priority = HyperionPriority },
         FramesPerSecond = FramesPerSecond,
         LatencyOffset = TimeSpan.FromMilliseconds(LatencyOffsetMilliseconds),
         PauseRelease = TimeSpan.FromSeconds(PauseReleaseSeconds),
@@ -75,6 +83,29 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <returns>The filter.</returns>
     public PlaybackFilter ToPlaybackFilter() => PlaybackFilter.Create(
         PlaybackEnabled,
-        (PlaybackDevices ?? []).Where(d => d is not null).Select(d => d.Id),
+        ToTargets(),
         (PlaybackUsers ?? []).Where(u => u is not null).Select(u => u.Id));
+
+    /// <summary>Lists the Hyperion servers: the first one (also without a host, so the status can say it is missing),
+    /// then the additional ones that have a host.</summary>
+    /// <returns>The targets, in the configured order.</returns>
+    public IReadOnlyList<PlaybackTarget> ToTargets()
+    {
+        var targets = new List<PlaybackTarget>
+        {
+            PlaybackTarget.Create(HyperionName, Hyperion(HyperionHost, HyperionPort, HyperionPriority), DeviceIds(PlaybackDevices)),
+        };
+        foreach (var target in (AdditionalTargets ?? []).Where(target => target is not null && !string.IsNullOrWhiteSpace(target.Host)))
+        {
+            targets.Add(PlaybackTarget.Create(target.Name, Hyperion(target.Host, target.Port, target.Priority), DeviceIds(target.Devices)));
+        }
+
+        return targets;
+    }
+
+    private static HyperionClientOptions? Hyperion(string? host, int port, int priority)
+        => string.IsNullOrWhiteSpace(host) ? null : new HyperionClientOptions { Host = host.Trim(), Port = port, Priority = priority };
+
+    private static IEnumerable<string> DeviceIds(Collection<PlaybackDeviceSelection>? devices)
+        => (devices ?? []).Where(d => d is not null).Select(d => d.Id);
 }

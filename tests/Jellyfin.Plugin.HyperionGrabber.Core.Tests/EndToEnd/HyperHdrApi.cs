@@ -105,6 +105,9 @@ public sealed class HyperHdrApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
 
         effect["enable"] = false;
 
+        // HyperHDR turns the black bar detector off by default; the tests run with Hyperion.ng's defaults, which turn it on.
+        settings["blackborderdetector"] = HyperionNgApi.BlackBarDetector();
+
         await SendToInstanceAsync(
             instance,
             new JsonObject { ["command"] = "config", ["subcommand"] = "setconfig", ["config"] = settings },

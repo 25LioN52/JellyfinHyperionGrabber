@@ -41,6 +41,7 @@ public class JellyfinFfmpegSettingsProvider : IFfmpegSettingsProvider
                 ? NullIfEmpty(encoding.VaapiDevice)
                 : null,
             HardwareDecodingCodecs = encoding.HardwareDecodingCodecs ?? [],
+            ToneMapper = GetToneMapper(),
         };
     }
 
@@ -63,4 +64,13 @@ public class JellyfinFfmpegSettingsProvider : IFfmpegSettingsProvider
     };
 
     private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    /// <summary>
+    /// Picks the best tone mapping filter of Jellyfin's FFmpeg, from the filters Jellyfin checked when it started.
+    /// </summary>
+    /// <returns>The filter; <see cref="HdrToneMapper.None"/> when FFmpeg has neither.</returns>
+    private HdrToneMapper GetToneMapper()
+        => _mediaEncoder.SupportsFilter("tonemapx") ? HdrToneMapper.Tonemapx
+            : _mediaEncoder.SupportsFilter("zscale") ? HdrToneMapper.Zscale
+            : HdrToneMapper.None;
 }

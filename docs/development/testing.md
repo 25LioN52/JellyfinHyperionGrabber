@@ -38,6 +38,13 @@ throttling and that the process is killed.
 
 - FFmpeg is taken from `HYPERION_GRABBER_FFMPEG` or the `PATH`; without it these tests are **skipped**.
 - `HYPERION_GRABBER_REQUIRE_FFMPEG=true` makes a missing FFmpeg a failure. CI on Linux installs FFmpeg and sets it.
+- `FfmpegToneMappingTests` decode a lossless 10-bit BT.2020 clip, tagged PQ and HLG, with exact code values (`geq`,
+  FFV1): one second each of black, a gray at about 100 nits and a saturated orange. Untreated, the gray comes out at
+  130 of 255 and the orange as a pale brown; tone mapped, black stays black, the gray is above 180 and the orange
+  saturated. They run once per tone mapper (`tonemapx`, `zscale`) with the first FFmpeg that has it.
+  `HYPERION_GRABBER_JELLYFIN_FFMPEG` names Jellyfin's FFmpeg, the only one with `tonemapx`; CI on Linux installs
+  jellyfin-ffmpeg from Jellyfin's APT repository next to the system FFmpeg, sets it, and then requires both tone
+  mappers to be tested.
 - `StreamingIntegrationTests` use the same clip end to end: fake playback events go through `PlaybackMonitor` and a
   real `StreamingGrabSessionFactory` (FFmpeg reading `file:<clip>`, `HyperionClient`) to `FakeHyperionServer`, which
   must receive the frame at the playback position, frames in playback order and pace, and a `Clear` on stop.
@@ -47,7 +54,8 @@ throttling and that the process is killed.
 - Hardware decoding is only tested on request: set `HYPERION_GRABBER_HWACCEL` to `Nvenc`, `Qsv`, `Vaapi`, `Amf`,
   `VideoToolbox` or `Rkmpp` (and `HYPERION_GRABBER_HWDEVICE`, for example `/dev/dri/renderD128`, for VA-API / QSV on
   Linux) and run `dotnet test --solution Jellyfin.Plugin.HyperionGrabber.slnx -c Release -- --filter-method "*WithConfiguredHardware*"`.
-  Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this.
+  Jellyfin's own FFmpeg (`/usr/lib/jellyfin-ffmpeg/ffmpeg`) is the best choice for this. `*OnConfiguredHardware*`
+  does the same for HDR: an HEVC Main 10 PQ clip (needs libx265) through the GPU scaler in `p010` and the tone mapper.
 
 ## End-to-end tests against Hyperion.ng and HyperHDR
 
@@ -61,6 +69,7 @@ computes for its LEDs.
 | `TestPattern_LightsTheLedOfEachEdgeInThatEdgesColor` | LEDs sampling the middle of the top, right, bottom and left edge show red, green, blue and yellow: byte order and orientation of our `RawImage` |
 | `Picture_ReachesEveryRunningInstance_EachThroughItsOwnLayout` | With two running instances (the second samples the regions in reverse order) both show the picture through their own layout, and both list our origin |
 | `Picture_ReachesAnInstanceStartedWhileStreaming` | An instance started while we stream shows the picture |
+| `BlackBars_AreCutOffByHyperion_SoTheEdgeLedsShowThePicture` | A letterboxed (bars at the top and bottom) and a pillarboxed (bars at the sides) test pattern light every edge LED in the pattern's color, not black: Hyperion's black bar detector finds the bars in our picture ([ADR 0013](adr/0013-black-bars-and-aspect-ratio.md)) |
 | `Picture_ComesBack_AfterTheRemoteControlClearsOurPriority` | After a JSON-RPC `clear` of priority 150 on instance 0 (as from the web UI's remote control), the next images over the same connection light the LEDs again: Hyperion.ng asks for a new `Register` with `registered = -1` and the client sends it; HyperHDR registers the priority itself on the next image |
 
 Colors are compared by which channels are on, because Hyperion.ng's brightness compensation and smoothing change the
@@ -90,8 +99,8 @@ the connection); `HyperionNgApi` and `HyperHdrApi` cover the differences:
 - **Skipped** everywhere else: without `HYPERION_GRABBER_E2E_HOST` the tests report as skipped.
 - **Preparation.** `HyperionServerFixture` asks the server what it is (`sysinfo`), logs in with its factory password
   (override with `HYPERION_GRABBER_E2E_PASSWORD`), gives instance 0 four LEDs on the `file` device, creates the
-  instance `Grabber E2E second instance` with the reverse layout, turns off the startup effect and waits for the ones
-  already playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real
+  instance `Grabber E2E second instance` with the reverse layout, turns off the startup effect, turns on the black bar
+  detector with Hyperion.ng's defaults (HyperHDR's default is off) and waits for the startup effects already playing. It refuses to run when any instance uses a device other than `file`, so it cannot overwrite a real
   setup. HyperHDR shows the settings of running instances only, so a stopped instance other than the fixture's own is
   refused too.
 
@@ -132,5 +141,4 @@ against the pause keep-alive.
 
 ## Planned
 
-- *(M3)* FFmpeg tests with an HDR sample asserting tone-mapped colors.
 - *(M2)* Sync engine tests driven entirely by `FakeTimeProvider` and scripted playback events.

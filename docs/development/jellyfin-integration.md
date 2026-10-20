@@ -39,8 +39,10 @@ Jellyfin serializes API JSON in PascalCase; the config page sends and reads Pasc
 - Add properties only with defaults that keep today's behaviour.
 - Never rename or remove a property without a migration (read the old value, write the new one) and a test that an
   old XML file still loads (`PluginConfigurationTests.MissingElements_KeepDefaults` is the pattern).
-- Multiple targets (M3) will replace the single host/port/priority with a list; the migration turns the existing
-  values into the first target.
+- Multiple targets (M3) did not need a migration: the top-level host/port/priority and `PlaybackDevices` stay the
+  first target, `HyperionName` and `AdditionalTargets` (name, host, port, priority, devices) were added with empty
+  defaults ([ADR 0014](adr/0014-multiple-targets.md)). `PluginConfigurationTests` load a 0.7 XML file and the page's
+  JSON.
 
 ## Playback events (input for M1/M2)
 
@@ -90,7 +92,17 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
 - `JellyfinVideoInputResolver` does this once per playback start, on the streaming session's task:
   `ILibraryManager.GetItemById(itemId)`, then `IMediaSourceManager.GetStaticMediaSources(item, false)` (same signature
   in 10.11 and 12). It picks the source whose id matches the reported `MediaSourceId` (with or without dashes),
-  otherwise the first (default) one, and takes size and codec from its first video stream.
+  otherwise the first (default) one, and takes size, codec and dynamic range from its first video stream.
+- The size is the display size: for anamorphic video (`MediaStream.IsAnamorphic`, or unknown and a shape more than
+  5 % off) the width becomes height × `MediaStream.AspectRatio` (`16:9`, `2.40:1`, ...), so a 16:9 DVD stored at
+  720×576 is decoded as 1024×576 and sent as 160×90 ([ADR 0013](adr/0013-black-bars-and-aspect-ratio.md)).
+- The dynamic range comes from `MediaStream.VideoRangeType`, which Jellyfin computes from the color transfer, the
+  Dolby Vision profile and the base-layer compatibility id (`Jellyfin.Data.Enums`, the same in 10.11 and 12):
+  `HDR10`, `HDR10Plus`, `DOVIWithHDR10(Plus)` and `DOVIWithEL(HDR10Plus)` are PQ; `HLG` and `DOVIWithHLG` are HLG;
+  `DOVI` (profile 5, no compatible base layer) needs the Dolby Vision metadata; `DOVIWithSDR`, `SDR` and `Unknown` are
+  SDR. `DOVIInvalid` follows the base layer's transfer while `VideoRange` is `HDR` (Jellyfin 10.11 always says HDR for
+  it, 12 only when the base layer is tagged PQ or HLG). Video with a known bit depth under 10 counts as SDR, as in
+  Jellyfin.
 - Like Jellyfin's transcoder, the path is passed as `file:<path>`, so FFmpeg never reads a path as another protocol.
 - Not decoded, with a log line saying why: items that are not `Video` (Live TV channels, music), sources that are not
   local files (`Protocol != File` or `IsRemote`, which covers `.strm` and Live TV: re-decoding would open a second
@@ -99,7 +111,8 @@ How the plugin uses them (`Playback/PlaybackMonitorService.cs`, `Playback/Playba
 
 `JellyfinFfmpegSettingsProvider` reads, on every call, `IMediaEncoder.EncoderPath` and the encoding options
 (`IServerConfigurationManager.GetEncodingOptions()`, the same in 10.11 and 12): `HardwareAccelerationType`,
-`VaapiDevice` and `HardwareDecodingCodecs`. Like Jellyfin's transcoder, a video is hardware-decoded only when its
+`VaapiDevice` and `HardwareDecodingCodecs`, and asks `IMediaEncoder.SupportsFilter` for `tonemapx` and `zscale` (both
+are in the filter list Jellyfin probes at startup, in 10.11 and 12). Like Jellyfin's transcoder, a video is hardware-decoded only when its
 codec is enabled under **Dashboard → Playback → Transcoding → Enable hardware decoding for**; an unknown codec tries
 the hardware. `FfmpegFrameSource` ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) then builds the command line:
 
@@ -117,8 +130,16 @@ the hardware. `FfmpegFrameSource` ([ADR 0007](adr/0007-ffmpeg-frame-source.md)) 
 Every variant adds `-ss <start>` before `-i`, `-map 0:v:0 -an -sn -dn`, an `fps=<rate>` filter first and
 `format=rgb24`, and writes `-f rawvideo pipe:1`. W is 160 by default and H follows from the display aspect ratio
 (rounded to an even number). If FFmpeg exits with an error before the first frame, the source logs a warning and
-restarts on the CPU. HDR tone mapping is not applied yet *(planned, M3)*.
+restarts on the CPU.
+
+For HDR video ([ADR 0012](adr/0012-hdr-tone-mapping.md)) the hardware scalers output `p010` instead of `nv12` /
+`yuv420p` (`hwdownload,format=p010`), CPU paths scale to `yuv420p10le`, and before `format=rgb24` come
+`setparams=color_primaries=bt2020:color_trc=<smpte2084|arib-std-b67>:colorspace=bt2020nc` and the tone mapper:
+`tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p` (Jellyfin's software tone mapping
+with its defaults), or the `zscale` + `tonemap=mobius` chain on other FFmpeg builds. Dolby Vision profile 5 on Quick
+Sync is decoded with VA-API (Linux) or D3D11VA (Windows) instead, because the QSV decoders drop the Dolby Vision RPU.
 
 Verified so far: CPU on Windows (FFmpeg 8.0) and Linux (Ubuntu FFmpeg 6.1); NVENC and the D3D11VA path on an NVIDIA
-RTX 4070 (Windows); the CPU fallback with an unavailable VA-API device. QSV, VA-API, RKMPP and VideoToolbox are built
+RTX 4070 (Windows), also with HDR10 (HEVC Main 10, `p010` through `scale_cuda`); the CPU fallback with an unavailable
+VA-API device; `tonemapx` with jellyfin-ffmpeg on Linux (CI). QSV, VA-API, RKMPP and VideoToolbox are built
 after Jellyfin's own commands but not yet tested on real hardware; please report results.

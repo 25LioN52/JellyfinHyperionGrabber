@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 using Jellyfin.Plugin.HyperionGrabber.Core.Playback;
 using Jellyfin.Plugin.HyperionGrabber.TestSupport;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,8 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     private static readonly Guid Bob = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid Movie = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     private static readonly Guid Episode = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    private static readonly PlaybackTarget LivingRoom = Target("Living room", "192.168.1.20", "kodi");
+    private static readonly PlaybackTarget Bedroom = Target("Bedroom", "192.168.1.21", "shield");
 
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 5, 20, 0, 0, TimeSpan.Zero));
     private readonly RecordingGrabSessionFactory _factory = new();
@@ -36,7 +39,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_OnSelectedDevice_StartsSessionWithItsState()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
 
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi", position: TimeSpan.FromMinutes(5)) with { MediaSourceId = "source", UserId = Alice });
 
@@ -54,7 +57,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_OnOtherDevice_IsIgnored()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
 
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "phone"));
 
@@ -64,7 +67,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_WhenFilterDisabled_IsIgnored()
     {
-        await SetFilterAsync(PlaybackFilter.Create(false, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(false, ["kodi"], []));
 
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
@@ -82,7 +85,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_ByUnselectedUser_IsIgnored()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], [Alice]));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], [Alice]));
 
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi") with { UserId = Bob });
         await PostAsync(Event(PlaybackEventKind.Started, "s2", "kodi") with { UserId = Alice });
@@ -93,7 +96,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Progress_ForwardsPositionAndPauseToTheSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
         _time.Advance(TimeSpan.FromSeconds(30));
@@ -109,7 +112,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Progress_WithoutPosition_KeepsTheEstimatedPosition()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi", position: TimeSpan.FromMinutes(5)));
 
         // A report without a position must not look like a seek to the start.
@@ -126,22 +129,24 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task GetStatus_WithoutPlayback_ReportsTheFilter()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi", "shield"], [Alice]));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi", "shield"], [Alice]));
 
         var status = _monitor.GetStatus();
 
-        Assert.Equal(new PlaybackMonitorStatus(true, 2, 1, null, null), status);
+        Assert.True(status.FollowsPlayback);
+        Assert.Equal((1, 2), (status.UserCount, status.DeviceCount));
+        Assert.Equal(new TargetStatus("TV", PlaybackTargetKey.None, 2, null, null), Assert.Single(status.Targets));
     }
 
     [Fact]
     public async Task GetStatus_WhilePlaying_ReportsThePlaybackAndItsSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
         var session = Assert.Single(_factory.Sessions);
         session.Status = new GrabSessionStatus { Phase = GrabSessionPhase.Paused, FramesSent = 42 };
 
-        var playback = _monitor.GetStatus().Playback;
+        var playback = Assert.Single(_monitor.GetStatus().Targets).Playback;
 
         Assert.NotNull(playback);
         Assert.Equal(("KODI", "Kodi", Movie, _time.GetUtcNow()), (playback.DeviceName, playback.Client, playback.ItemId, playback.Since));
@@ -151,14 +156,14 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task GetStatus_AfterTheSessionStopped_KeepsItsLastProblem()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
         var problem = new ProblemReport(_time.GetUtcNow(), "Hyperion is unreachable: refused.");
         _factory.Sessions[0].Status = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, LastProblem = problem };
 
         await PostAsync(Event(PlaybackEventKind.Stopped, "s1", "kodi"));
 
-        var status = _monitor.GetStatus();
+        var status = Assert.Single(_monitor.GetStatus().Targets);
         Assert.Null(status.Playback);
         Assert.Same(problem, status.LastProblem);
     }
@@ -166,12 +171,12 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task GetStatus_WhenASessionCannotStart_SaysWhy()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         _factory.FailStart = true;
 
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
-        var problem = _monitor.GetStatus().LastProblem;
+        var problem = Assert.Single(_monitor.GetStatus().Targets).LastProblem;
         Assert.Equal("Could not start the lights for playback on KODI: Simulated session failure.", problem?.Message);
         Assert.Equal(_time.GetUtcNow(), problem?.Time);
     }
@@ -179,7 +184,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Stopped_DisposesTheSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
         await PostAsync(Event(PlaybackEventKind.Stopped, "s1", "kodi"));
@@ -191,7 +196,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     public async Task Progress_ForUnknownSession_StartsSession()
     {
         // Playback that was already running when Jellyfin or the plugin started.
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
 
         await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi", position: TimeSpan.FromMinutes(42)));
 
@@ -203,7 +208,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Progress_WithDifferentItem_RestartsSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
         await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi") with { ItemId = Episode });
@@ -216,7 +221,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_OnSecondSelectedDevice_TakesOverAndHandsBackWhenStopped()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi", "shield"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi", "shield"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
         await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi", position: TimeSpan.FromMinutes(1)));
 
@@ -236,10 +241,10 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task UpdateFilter_RemovingThePlayingDevice_StopsSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
-        await SetFilterAsync(PlaybackFilter.Create(true, ["shield"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["shield"], []));
 
         Assert.True(Assert.Single(_factory.Sessions).IsDisposed);
     }
@@ -247,7 +252,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task UpdateFilter_Disabling_StopsSession()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
         await SetFilterAsync(PlaybackFilter.Disabled);
@@ -260,7 +265,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     {
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi", position: TimeSpan.FromMinutes(3)));
 
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
 
         Assert.Equal(TimeSpan.FromMinutes(3), Assert.Single(_factory.Running).Initial.Position);
     }
@@ -268,7 +273,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task Started_WhenFactoryFails_KeepsProcessingAndRetriesOnNextReport()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         _factory.FailStart = true;
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
         Assert.Empty(_factory.Sessions);
@@ -282,7 +287,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task StopAsync_DisposesRunningSessionAndIgnoresLaterReports()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
         await _monitor.StopAsync(Ct);
@@ -294,7 +299,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
     [Fact]
     public async Task ManyPlaybacks_TracksAtMostTheLimit()
     {
-        await SetFilterAsync(PlaybackFilter.Create(true, ["kodi"], []));
+        await SetFilterAsync(TestFilters.OneTarget(true, ["kodi"], []));
         await PostAsync(Event(PlaybackEventKind.Started, "kodi-session", "kodi"));
 
         // Lost stop events must not grow the state forever: the least recently reported playback is forgotten.
@@ -305,6 +310,122 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
         }
 
         Assert.True(Assert.Single(_factory.Sessions).IsDisposed);
+    }
+
+    [Fact]
+    public async Task TwoTargets_FollowTheirOwnDevicesIndependently()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, Bedroom], []));
+
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        await PostAsync(Event(PlaybackEventKind.Started, "s2", "shield"));
+        await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi", position: TimeSpan.FromMinutes(1)));
+
+        // A movie starting on the bedroom TV does not take the living room's lights.
+        Assert.Equal([("s1", LivingRoom), ("s2", Bedroom)], _factory.Running.Select(s => (s.Initial.SessionId, s.Target)));
+        Assert.Single(_factory.Sessions[0].Updates);
+        Assert.Empty(_factory.Sessions[1].Updates);
+
+        await PostAsync(Event(PlaybackEventKind.Stopped, "s1", "kodi"));
+
+        Assert.Equal(["s2"], _factory.Running.Select(s => s.Initial.SessionId));
+    }
+
+    [Fact]
+    public async Task DeviceSelectedForTwoTargets_DrivesBoth()
+    {
+        var hue = Target("Hue room", "192.168.1.22", "kodi");
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, hue], []));
+
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        await PostAsync(Event(PlaybackEventKind.Progress, "s1", "kodi", position: TimeSpan.FromMinutes(1)) with { IsPaused = true });
+
+        Assert.Equal([LivingRoom, hue], _factory.Running.Select(s => s.Target));
+        Assert.All(_factory.Running, session => Assert.True(Assert.Single(session.Updates).IsPaused));
+    }
+
+    [Fact]
+    public async Task Stopped_PlaybackOnTwoTargets_StopsBothSessionsAtTheSameTime()
+    {
+        var hue = Target("Hue room", "192.168.1.22", "kodi");
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, hue], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        var slowStop = new TaskCompletionSource();
+        foreach (var session in _factory.Sessions)
+        {
+            session.DisposeGate = slowStop.Task;
+        }
+
+        _monitor.Post(Event(PlaybackEventKind.Stopped, "s1", "kodi"));
+
+        // Both stops have begun while neither has finished: one slow Hyperion does not delay the other target.
+        await TestHelpers.WaitUntilAsync(() => _factory.Sessions.All(s => s.IsDisposeStarted));
+        Assert.DoesNotContain(_factory.Sessions, s => s.IsDisposed);
+        slowStop.SetResult();
+        await WaitForProcessingAsync();
+        Assert.Empty(_factory.Running);
+    }
+
+    [Fact]
+    public async Task UpdateFilter_ChangingATargetsServer_RestartsOnlyThatTargetsSession()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, Bedroom], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        await PostAsync(Event(PlaybackEventKind.Started, "s2", "shield"));
+        var moved = Target("Bedroom", "192.168.1.31", "shield");
+
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, moved], []));
+
+        Assert.Equal(3, _factory.Sessions.Count);
+        Assert.False(_factory.Sessions[0].IsDisposed);
+        Assert.True(_factory.Sessions[1].IsDisposed);
+        Assert.Equal(("s2", moved), (_factory.Sessions[2].Initial.SessionId, _factory.Sessions[2].Target));
+    }
+
+    [Fact]
+    public async Task UpdateFilter_RenamingATarget_KeepsItsSession()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+
+        await SetFilterAsync(PlaybackFilter.Create(true, [Target("Lounge", "192.168.1.20", "kodi")], []));
+
+        Assert.Single(_factory.Running);
+        Assert.Equal("Lounge", Assert.Single(_monitor.GetStatus().Targets).Name);
+    }
+
+    [Fact]
+    public async Task UpdateFilter_RemovingATarget_StopsItsSessionAndForgetsItsProblem()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, Bedroom], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s1", "kodi"));
+        await PostAsync(Event(PlaybackEventKind.Started, "s2", "shield"));
+        _factory.Sessions[1].Status = new GrabSessionStatus { Phase = GrabSessionPhase.Streaming, LastProblem = new ProblemReport(_time.GetUtcNow(), "refused") };
+
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom], []));
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, Bedroom], []));
+
+        Assert.True(_factory.Sessions[1].IsDisposed);
+        Assert.False(_factory.Sessions[0].IsDisposed);
+        Assert.Null(_monitor.GetStatus().Targets[1].LastProblem);
+    }
+
+    [Fact]
+    public async Task GetStatus_ReportsEachTargetInOrder()
+    {
+        await SetFilterAsync(PlaybackFilter.Create(true, [LivingRoom, Bedroom], []));
+        await PostAsync(Event(PlaybackEventKind.Started, "s2", "shield"));
+        var problem = new ProblemReport(_time.GetUtcNow(), "Hyperion is unreachable: refused.");
+        _factory.Sessions[0].Status = new GrabSessionStatus { Phase = GrabSessionPhase.Reconnecting, LastProblem = problem };
+
+        var targets = _monitor.GetStatus().Targets;
+
+        Assert.Equal(["Living room", "Bedroom"], targets.Select(t => t.Name));
+        Assert.Equal(new PlaybackTargetKey("192.168.1.21", 19400, 150), targets[1].Key);
+        Assert.Null(targets[0].Playback);
+        Assert.Null(targets[0].LastProblem);
+        Assert.Equal("SHIELD", targets[1].Playback?.DeviceName);
+        Assert.Same(problem, targets[1].LastProblem);
     }
 
     [Fact]
@@ -320,7 +441,7 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
         var logger = new ThrowingLogger(throwOnEventId: 6); // PlaybackStarted
         var monitor = new PlaybackMonitor(_factory, _time, logger);
         monitor.Start();
-        monitor.UpdateFilter(PlaybackFilter.Create(true, ["kodi"], []));
+        monitor.UpdateFilter(TestFilters.OneTarget(true, ["kodi"], []));
 
         monitor.Post(Event(PlaybackEventKind.Started, "s1", "kodi"));
 
@@ -338,6 +459,9 @@ public sealed class PlaybackMonitorTests : IAsyncDisposable
         ItemId = Movie,
         Position = position,
     };
+
+    private static PlaybackTarget Target(string name, string host, params string[] deviceIds)
+        => PlaybackTarget.Create(name, new HyperionClientOptions { Host = host }, deviceIds);
 
     private Task PostAsync(PlaybackEvent playbackEvent)
     {

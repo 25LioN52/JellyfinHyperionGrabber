@@ -78,6 +78,9 @@ public sealed class HyperionNgApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
                 ["effect"] = "Rainbow swirl fast",
                 ["duration_ms"] = 3000,
             },
+
+            // Hyperion.ng's defaults (schema-blackborderdetector.json), written out because setconfig replaces the whole object.
+            ["blackborderdetector"] = BlackBarDetector(),
         };
 
         return SendGlobalAsync(
@@ -92,6 +95,18 @@ public sealed class HyperionNgApi(HyperionJsonRpc rpc) : HyperionServerApi(rpc)
             },
             cancellationToken);
     }
+
+    /// <summary>The black bar detector with Hyperion.ng's default settings, which turn it on.</summary>
+    internal static JsonObject BlackBarDetector() => new()
+    {
+        ["enable"] = true,
+        ["threshold"] = 5,
+        ["unknownFrameCnt"] = 600,
+        ["borderFrameCnt"] = 50,
+        ["maxInconsistentCnt"] = 10,
+        ["blurRemoveCnt"] = 1,
+        ["mode"] = "default",
+    };
 
     protected override Task<JsonElement> SendGlobalAsync(JsonObject request, CancellationToken cancellationToken)
         => Rpc.SendAsync(request, cancellationToken);

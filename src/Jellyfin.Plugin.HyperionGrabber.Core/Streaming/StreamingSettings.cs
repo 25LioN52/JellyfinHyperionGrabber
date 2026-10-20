@@ -7,7 +7,7 @@ using Jellyfin.Plugin.HyperionGrabber.Core.Hyperion;
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 
 /// <summary>
-/// Where playback is streamed to and how (from the plugin configuration).
+/// How playback is streamed (from the plugin configuration); where to is each <see cref="Playback.PlaybackTarget"/>'s.
 /// </summary>
 public sealed record StreamingSettings
 {
@@ -22,9 +22,6 @@ public sealed record StreamingSettings
 
     /// <summary>Longest configurable pause before the lights are released.</summary>
     public static readonly TimeSpan MaxPauseRelease = TimeSpan.FromHours(1);
-
-    /// <summary>Gets the Hyperion server, or <see langword="null"/> when none is configured.</summary>
-    public HyperionClientOptions? Hyperion { get; init; }
 
     /// <summary>Gets the number of frames per second decoded and sent to Hyperion.</summary>
     public int FramesPerSecond { get; init; } = FfmpegFrameSourceOptions.DefaultFramesPerSecond;

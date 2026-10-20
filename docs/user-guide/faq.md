@@ -24,11 +24,20 @@ can be heavy on low-power CPUs: lower the **Frame rate** on the plugin page. Whe
 skips pictures rather than falling behind.
 
 **Does it work with HDR and Dolby Vision?**
-That is a planned headline feature: HDR10 and Dolby Vision are tone-mapped to SDR colors before sending, so the LEDs
-are not washed out.
+Yes. HDR10, HDR10+, HLG and Dolby Vision (including profile 5) are tone mapped to SDR colors before sending, so the
+LEDs are not washed out. It works out of the box with Jellyfin's bundled FFmpeg; see
+[HDR and Dolby Vision](configuration.md#hdr-and-dolby-vision).
 
 **What about subtitles, menus and the on-screen display?**
 They are not part of the decoded video, so the lights follow the film only, which is usually what you want.
+
+**I have LEDs on two TVs. Can each follow its own TV?**
+Yes. Give each TV its own Hyperion server and add the second one under **More TVs** on the plugin page, with the
+devices that play on that TV. See [More TVs](configuration.md#more-tvs).
+
+**What about black bars in widescreen films?**
+Hyperion's black bar detector cuts them off, so the LEDs follow the picture inside the bars. Hyperion.ng has it on by
+default; in HyperHDR turn it on. See [Black bars](hyperion-setup.md#black-bars-widescreen-films).
 
 **What happens when I pause?**
 The LEDs hold the last frame. If the pause lasts longer than 15 seconds (configurable, 0 = always hold), the plugin

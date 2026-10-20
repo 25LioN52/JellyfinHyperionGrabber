@@ -33,7 +33,7 @@ sequenceDiagram
 | --- | --- | --- |
 | Detect playback, pause, seek, stop | Jellyfin server | From the session reports every client sends, for the devices and users you select |
 | Decode and downscale | Jellyfin server | Uses Jellyfin's FFmpeg and hardware acceleration, at the frame rate you set |
-| HDR / Dolby Vision tone mapping | Jellyfin server | So LEDs get SDR colors *(planned, M3)* |
+| HDR / Dolby Vision tone mapping | Jellyfin server | HDR10, HLG and Dolby Vision become SDR colors, on the small picture |
 | Keep in sync with the client | Jellyfin server | Tracks the position from the client's reports and applies your light timing offset |
 | Map picture to LEDs | Hyperion | Your LED layout, any shape |
 | Calibration, smoothing, black borders | Hyperion | Unchanged |

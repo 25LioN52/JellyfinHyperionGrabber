@@ -13,8 +13,8 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.HyperionGrabber.Core.Streaming;
 
 /// <summary>
-/// Streams one playback to Hyperion: resolves the video, decodes from the playback position and, on every tick of a
-/// timer running at the frame rate, sends the frame that is due.
+/// Streams one playback to one target's Hyperion: resolves the video, decodes from the playback position and, on every
+/// tick of a timer running at the frame rate, sends the frame that is due.
 /// </summary>
 /// <remarks>
 /// <para>All work runs on the session's own task; <see cref="Update"/> only publishes the newest playback state.</para>
@@ -80,6 +80,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     internal static readonly TimeSpan StatusInterval = TimeSpan.FromSeconds(1);
 
     private readonly StreamingGrabSessionFactory _factory;
+    private readonly PlaybackTarget _target;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _stopping = new();
@@ -107,6 +108,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private int _requestedDecoder; // HardwareAcceleration + 1.
     private IPlaybackClock? _clock;
     private string? _clockNote; // Why the clock's readings are not used, when they disagree.
+    private PictureFormat? _picture;
 
     // Owned by the run task.
     private DateTimeOffset _statusWindowStart;
@@ -140,9 +142,10 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     private DateTimeOffset _retryAt;
     private bool _decodingStopped; // During a long Hyperion outage.
 
-    private StreamingGrabSession(StreamingGrabSessionFactory factory, PlaybackState state, Task previousHyperionReleased)
+    private StreamingGrabSession(StreamingGrabSessionFactory factory, PlaybackState state, PlaybackTarget target, Task previousHyperionReleased)
     {
         _factory = factory;
+        _target = target;
         _previousHyperionReleased = previousHyperionReleased;
         _timeProvider = factory.TimeProvider;
         _logger = factory.SessionLogger;
@@ -206,6 +209,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             IsHardwareFallback = decoder == (int)HardwareAcceleration.None + 1
                 && Volatile.Read(ref _requestedDecoder) > (int)HardwareAcceleration.None + 1,
             TimingSource = Volatile.Read(ref _clock) is { } clock ? Volatile.Read(ref _clockNote) ?? clock.Description : null,
+            Picture = Volatile.Read(ref _picture),
         };
     }
 
@@ -238,13 +242,14 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     /// <summary>Starts a session on its own task.</summary>
     /// <param name="factory">Dependencies.</param>
     /// <param name="state">The playback's state.</param>
-    /// <param name="previousHyperionReleased">The previous session's <see cref="HyperionReleased"/>: after its stop timed
-    /// out it may still be clearing the same priority, so this session connects only after that (or after
-    /// <see cref="StopTimeout"/>).</param>
+    /// <param name="target">The target whose Hyperion gets the picture.</param>
+    /// <param name="previousHyperionReleased">The <see cref="HyperionReleased"/> of the previous session of the same
+    /// server and priority: after its stop timed out it may still be clearing that priority, so this session connects
+    /// only after that (or after <see cref="StopTimeout"/>).</param>
     /// <returns>The running session.</returns>
-    internal static StreamingGrabSession Start(StreamingGrabSessionFactory factory, PlaybackState state, Task previousHyperionReleased)
+    internal static StreamingGrabSession Start(StreamingGrabSessionFactory factory, PlaybackState state, PlaybackTarget target, Task previousHyperionReleased)
     {
-        var session = new StreamingGrabSession(factory, state, previousHyperionReleased);
+        var session = new StreamingGrabSession(factory, state, target, previousHyperionReleased);
         session._run = Task.Run(session.RunAsync);
         return session;
     }
@@ -297,7 +302,7 @@ internal sealed partial class StreamingGrabSession : IGrabSession
     {
         var state = Volatile.Read(ref _state);
         var settings = _factory.StreamingSettings.GetSettings();
-        if (settings.Hyperion is not { } hyperion)
+        if (_target.Hyperion is not { } hyperion)
         {
             Log.NotConfigured(_logger);
             SetStopped("No Hyperion server is configured.");
@@ -334,6 +339,9 @@ internal sealed partial class StreamingGrabSession : IGrabSession
             return null;
         }
 
+        LogToneMapping(frames);
+        Volatile.Write(ref _picture, PictureFormat.From(frames));
+
         KodiClockOptions? clock = null;
         if (settings.KodiClock && KodiClockOptions.IsKodi(state.Client) && KodiClockOptions.ParseAddress(state.RemoteAddress) is { } address)
         {
@@ -348,6 +356,28 @@ internal sealed partial class StreamingGrabSession : IGrabSession
         }
 
         return new Plan(hyperion, frames, settings.LatencyOffset, settings.PauseRelease, clock);
+    }
+
+    /// <summary>Logs how an HDR video is mapped to SDR, once per playback.</summary>
+    private void LogToneMapping(FfmpegFrameSourceOptions frames)
+    {
+        if (frames.DynamicRange == VideoDynamicRange.Sdr)
+        {
+            return;
+        }
+
+        if (!frames.IsToneMapped)
+        {
+            Log.NoToneMapping(_logger, frames.DynamicRange);
+        }
+        else if (frames.DynamicRange == VideoDynamicRange.DolbyVision && frames.ToneMapper != HdrToneMapper.Tonemapx)
+        {
+            Log.DolbyVisionWithoutTonemapx(_logger, frames.ToneMapper);
+        }
+        else
+        {
+            Log.ToneMapping(_logger, frames.DynamicRange, frames.ToneMapper);
+        }
     }
 
     private async Task StreamAsync(Plan plan, CancellationToken token)
@@ -1001,5 +1031,14 @@ internal sealed partial class StreamingGrabSession : IGrabSession
 
         [LoggerMessage(EventId = 23, Level = LogLevel.Warning, Message = "The Kodi remote control port {Port} is not between 1 and 65535; the timing uses the client's reports")]
         public static partial void InvalidKodiPort(ILogger logger, int port);
+
+        [LoggerMessage(EventId = 24, Level = LogLevel.Information, Message = "{DynamicRange} video: tone mapping it to SDR with {ToneMapper}")]
+        public static partial void ToneMapping(ILogger logger, VideoDynamicRange dynamicRange, HdrToneMapper toneMapper);
+
+        [LoggerMessage(EventId = 25, Level = LogLevel.Warning, Message = "{DynamicRange} video is sent without tone mapping, so the lights show pale colors: Jellyfin's FFmpeg has neither the tonemapx nor the zscale filter")]
+        public static partial void NoToneMapping(ILogger logger, VideoDynamicRange dynamicRange);
+
+        [LoggerMessage(EventId = 26, Level = LogLevel.Warning, Message = "Dolby Vision profile 5 video: {ToneMapper} maps its brightness, but only Jellyfin's FFmpeg (tonemapx) gets its colors right")]
+        public static partial void DolbyVisionWithoutTonemapx(ILogger logger, HdrToneMapper toneMapper);
     }
 }
