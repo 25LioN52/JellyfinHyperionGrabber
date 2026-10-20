@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.7.1...v0.8.0) (2026-10-20)
+
+
+### Features
+
+* one Hyperion server per TV (several targets) ([a7c70c4](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/a7c70c42c06b5838b2ca0cffd6f2ac4fe2d2c1dc))
+* send anamorphic video in its display shape; black bars via Hyperion's detector ([a7c70c4](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/a7c70c42c06b5838b2ca0cffd6f2ac4fe2d2c1dc))
+* tone map HDR10/HLG to SDR and fix Dolby Vision colors ([a7c70c4](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/a7c70c42c06b5838b2ca0cffd6f2ac4fe2d2c1dc))
+
 ## [0.7.1](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.7.0...v0.7.1) (2026-10-19)
 
 
