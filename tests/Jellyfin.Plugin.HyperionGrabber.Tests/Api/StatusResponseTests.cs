@@ -43,6 +43,18 @@ public class StatusResponseTests
         Assert.Equal(("NoDevices", "No device is selected for this Hyperion server."), (response.Targets[1].State, response.Targets[1].Summary));
     }
 
+    [Fact]
+    public void From_WithFollowPlaybackOff_SaysSoForEveryTarget()
+    {
+        var bedroom = new TargetStatus("Bedroom", new PlaybackTargetKey("192.168.1.21", 19400, 150), 1, null, null);
+        var status = new PlaybackMonitorStatus(false, 0, [Target(1, null), bedroom]);
+
+        var response = StatusResponse.From(status, NoItem);
+
+        Assert.Equal("Off", response.State);
+        Assert.All(response.Targets, target => Assert.Equal(("Off", "Follow playback is off."), (target.State, target.Summary)));
+    }
+
     [Theory]
     [InlineData(GrabSessionPhase.Starting, "Starting: opening Big Buck Bunny for Living room TV.")]
     [InlineData(GrabSessionPhase.Streaming, "Streaming Big Buck Bunny from Living room TV to Hyperion.")]

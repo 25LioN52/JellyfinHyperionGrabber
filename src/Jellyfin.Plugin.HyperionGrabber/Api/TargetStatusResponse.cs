@@ -17,8 +17,8 @@ public sealed record TargetStatusResponse
     /// <summary>Gets the server and priority, for example <c>192.168.1.20:19400 (priority 150)</c>.</summary>
     public required string Address { get; init; }
 
-    /// <summary>Gets a machine-readable state: <c>NoDevices</c>, <c>Waiting</c> or a <see cref="GrabSessionPhase"/>
-    /// name.</summary>
+    /// <summary>Gets a machine-readable state: <c>Off</c>, <c>NoDevices</c>, <c>Waiting</c> or a
+    /// <see cref="GrabSessionPhase"/> name.</summary>
     public required string State { get; init; }
 
     /// <summary>Gets one sentence for the user.</summary>

@@ -31,7 +31,13 @@ public sealed record StatusResponse
         var targets = status.Targets.Select(target => TargetStatusResponse.From(target, itemName)).ToList();
         if (!status.FollowsPlayback)
         {
-            return new StatusResponse { State = "Off", Summary = "Follow playback is off: the lights do not follow any playback.", Targets = targets };
+            // Nothing plays on any target then; without this each would say it waits for playback.
+            return new StatusResponse
+            {
+                State = "Off",
+                Summary = "Follow playback is off: the lights do not follow any playback.",
+                Targets = targets.Select(target => target with { State = "Off", Summary = "Follow playback is off." }).ToList(),
+            };
         }
 
         if (status.DeviceCount == 0)
