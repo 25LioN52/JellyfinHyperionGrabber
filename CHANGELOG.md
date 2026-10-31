@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.8.0...v0.8.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* keep HDR colors by tone mapping HDR10 and HLG with zscale ([#52](https://github.com/25LioN52/JellyfinHyperionGrabber/issues/52)) ([8db9915](https://github.com/25LioN52/JellyfinHyperionGrabber/commit/8db99157cf4afdd38743cfc4dd21a6f8ab27cf3d))
+
 ## [0.8.0](https://github.com/25LioN52/JellyfinHyperionGrabber/compare/v0.7.1...v0.8.0) (2026-10-20)
 
 
