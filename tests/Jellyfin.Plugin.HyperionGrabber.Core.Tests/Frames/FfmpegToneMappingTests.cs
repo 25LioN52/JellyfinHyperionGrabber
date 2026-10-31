@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.HyperionGrabber.Core.Frames;
@@ -64,6 +65,33 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         Assert.True(orange.R >= 150 && orange.G <= orange.R / 2 && orange.B <= orange.R / 3, $"Orange came out as {orange}.");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Hdr10_KeepsTheHueOfOrdinaryColors(bool jellyfinFfmpeg)
+    {
+        // The filter the plugin picks for HDR10 when FFmpeg has both, as Jellyfin's does. tonemapx failed this
+        // (0.8.0): crimson (200, 30, 50) came out as (148, 0, 46), Spider-Man's red as cherry. Also checked with
+        // Jellyfin's FFmpeg, the one the plugin runs on a server.
+        var toneMapper = new FfmpegSettings { FfmpegPath = "ffmpeg", HasTonemapx = true, HasZscale = true }.GetToneMapper(VideoDynamicRange.Hdr10);
+        var path = jellyfinFfmpeg ? await JellyfinFfmpegWithAsync(toneMapper) : await FfmpegWithAsync(toneMapper);
+        var clip = await ffmpeg.GetSdrColorsAsHdr10ClipAsync();
+        Assert.False(clip is null && FfmpegFixture.IsRequired, "Could not make the HDR10 clip of ordinary colors.");
+        Assert.SkipWhen(clip is null, "No FFmpeg with zscale to make the HDR10 clip of ordinary colors.");
+
+        var colors = await ReadMiddleOfEachSecondAsync(path, clip!, VideoDynamicRange.Hdr10, toneMapper, FfmpegFixture.SdrColors.Length);
+
+        // Brightness may differ after tone mapping; the hue may not (a red-orange must not turn cherry or purple).
+        var report = string.Join(", ", FfmpegFixture.SdrColors.Select((expected, i) => $"{expected} -> {colors[i]}"));
+        TestContext.Current.TestOutputHelper?.WriteLine($"{toneMapper}: {report}");
+        for (var i = 0; i < colors.Length; i++)
+        {
+            var expected = FfmpegFixture.SdrColors[i];
+            Assert.True(HueDistance(expected, colors[i]) <= 5, $"{expected} came out as {colors[i]}: hue {Hue(expected):0}° became {Hue(colors[i]):0}°. All: {report}");
+            Assert.True(Saturation(colors[i]) >= Saturation(expected) * 0.6, $"{expected} came out pale: {colors[i]}. All: {report}");
+        }
+    }
+
     /// <summary>
     /// Manual check on real hardware: set <c>HYPERION_GRABBER_HWACCEL</c> to a <see cref="HardwareAcceleration"/>
     /// name (and <c>HYPERION_GRABBER_HWDEVICE</c> for VA-API/QSV on Linux). Needs libx265 for the HEVC Main 10 clip.
@@ -112,21 +140,50 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
     private static void AssertNeutral((byte R, byte G, byte B) color)
         => Assert.True(Math.Abs(color.R - color.G) <= 8 && Math.Abs(color.G - color.B) <= 8, $"Gray came out tinted: {color}.");
 
-    /// <summary>Returns the middle pixel of the frames at 0.5, 1.5 and 2.5 s.</summary>
-    private async Task<((byte R, byte G, byte B) Black, (byte R, byte G, byte B) Gray, (byte R, byte G, byte B) Orange)> ReadEachSecondAsync(
-        string ffmpegPath, string transfer, VideoDynamicRange range, HdrToneMapper toneMapper)
+    /// <summary>HSV hue in degrees.</summary>
+    private static double Hue((byte R, byte G, byte B) color)
+    {
+        int r = color.R, g = color.G, b = color.B;
+        var max = Math.Max(r, Math.Max(g, b));
+        var delta = max - Math.Min(r, Math.Min(g, b));
+        if (delta == 0)
+        {
+            return 0;
+        }
+
+        var hue = max == r ? (g - b) / (double)delta : max == g ? 2 + ((b - r) / (double)delta) : 4 + ((r - g) / (double)delta);
+        return ((hue * 60) + 360) % 360;
+    }
+
+    private static double HueDistance((byte R, byte G, byte B) first, (byte R, byte G, byte B) second)
+    {
+        var distance = Math.Abs(Hue(first) - Hue(second));
+        return Math.Min(distance, 360 - distance);
+    }
+
+    private static double Saturation((byte R, byte G, byte B) color)
+    {
+        var max = Math.Max(color.R, Math.Max(color.G, color.B));
+        return max == 0 ? 0 : (max - Math.Min(color.R, Math.Min(color.G, color.B))) / (double)max;
+    }
+
+    private static string FilterOf(HdrToneMapper toneMapper) => toneMapper == HdrToneMapper.Tonemapx ? "tonemapx" : "zscale";
+
+    /// <summary>Returns the middle pixel of the frame in the middle of each second.</summary>
+    private static async Task<(byte R, byte G, byte B)[]> ReadMiddleOfEachSecondAsync(
+        string ffmpegPath, string inputPath, VideoDynamicRange range, HdrToneMapper toneMapper, int seconds)
     {
         var options = new FfmpegFrameSourceOptions
         {
             FfmpegPath = ffmpegPath,
-            InputPath = ffmpeg.HdrClipPath(transfer),
+            InputPath = inputPath,
             SourceWidth = FfmpegFixture.ClipWidth,
             SourceHeight = FfmpegFixture.ClipHeight,
             DynamicRange = range,
             ToneMapper = toneMapper,
         };
         await using var source = FfmpegFrameSource.Start(options, TimeProvider.System, NullLogger.Instance);
-        var colors = new (byte R, byte G, byte B)[FfmpegFixture.HdrCodes.Length];
+        var colors = new (byte R, byte G, byte B)[seconds];
         while (await source.ReadFrameAsync(Ct) is { } frame)
         {
             using (frame)
@@ -140,13 +197,31 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
             }
         }
 
+        return colors;
+    }
+
+    /// <summary>Returns the middle pixel of the frames at 0.5, 1.5 and 2.5 s.</summary>
+    private async Task<((byte R, byte G, byte B) Black, (byte R, byte G, byte B) Gray, (byte R, byte G, byte B) Orange)> ReadEachSecondAsync(
+        string ffmpegPath, string transfer, VideoDynamicRange range, HdrToneMapper toneMapper)
+    {
+        var colors = await ReadMiddleOfEachSecondAsync(ffmpegPath, ffmpeg.HdrClipPath(transfer), range, toneMapper, FfmpegFixture.HdrCodes.Length);
         return (colors[0], colors[1], colors[2]);
+    }
+
+    /// <summary>Returns Jellyfin's FFmpeg, which must have the tone mapper's filter; skips when it is not configured.</summary>
+    private async Task<string> JellyfinFfmpegWithAsync(HdrToneMapper toneMapper)
+    {
+        ffmpeg.SkipIfUnavailable();
+        Assert.SkipWhen(ffmpeg.JellyfinFfmpegPath is null, "Set HYPERION_GRABBER_JELLYFIN_FFMPEG to Jellyfin's FFmpeg to test it.");
+        var filter = FilterOf(toneMapper);
+        Assert.True(await ffmpeg.HasFilterAsync(ffmpeg.JellyfinFfmpegPath!, filter), $"Jellyfin's FFmpeg has no {filter} filter.");
+        return ffmpeg.JellyfinFfmpegPath!;
     }
 
     private async Task<string> FfmpegWithAsync(HdrToneMapper toneMapper)
     {
         ffmpeg.SkipIfUnavailable();
-        var filter = toneMapper == HdrToneMapper.Tonemapx ? "tonemapx" : "zscale";
+        var filter = FilterOf(toneMapper);
         var path = await ffmpeg.FindFfmpegWithFilterAsync(filter);
 
         // Only Jellyfin's FFmpeg has tonemapx; CI installs it and requires every tone mapper to be tested.

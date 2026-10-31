@@ -134,10 +134,12 @@ restarts on the CPU.
 
 For HDR video ([ADR 0012](adr/0012-hdr-tone-mapping.md)) the hardware scalers output `p010` instead of `nv12` /
 `yuv420p` (`hwdownload,format=p010`), CPU paths scale to `yuv420p10le`, and before `format=rgb24` come
-`setparams=color_primaries=bt2020:color_trc=<smpte2084|arib-std-b67>:colorspace=bt2020nc` and the tone mapper:
+`setparams=color_primaries=bt2020:color_trc=<smpte2084|arib-std-b67>:colorspace=bt2020nc` and the tone mapper.
+HDR10 and HLG use the `zscale` + `tonemap=mobius` chain, which keeps hues; Dolby Vision profile 5 uses
 `tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p` (Jellyfin's software tone mapping
-with its defaults), or the `zscale` + `tonemap=mobius` chain on other FFmpeg builds. Dolby Vision profile 5 on Quick
-Sync is decoded with VA-API (Linux) or D3D11VA (Windows) instead, because the QSV decoders drop the Dolby Vision RPU.
+with its defaults), the only filter that applies its RPU. Each falls back to the other when FFmpeg lacks it
+(`FfmpegSettings.GetToneMapper`). Dolby Vision profile 5 on Quick Sync is decoded with VA-API (Linux) or D3D11VA
+(Windows) instead, because the QSV decoders drop the Dolby Vision RPU.
 
 Verified so far: CPU on Windows (FFmpeg 8.0) and Linux (Ubuntu FFmpeg 6.1); NVENC and the D3D11VA path on an NVIDIA
 RTX 4070 (Windows), also with HDR10 (HEVC Main 10, `p010` through `scale_cuda`); the CPU fallback with an unavailable

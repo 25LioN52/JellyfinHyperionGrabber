@@ -17,7 +17,7 @@ page is open. With [several Hyperion servers](#more-tvs) each one gets its own e
 | Pictures | Pictures sent to Hyperion per second compared to the frame rate you set, how many were sent and dropped, and how often decoding restarted (seeks). Many drops or a rate well below the setting mean the server, the network or Hyperion cannot keep up. |
 | Timing | Where the position comes from: **Kodi's clock** when the plugin reads it from Kodi, otherwise the client's reports to Jellyfin (with the reason if Kodi's clock cannot be used). |
 | Decoder | The hardware decoder in use, or **CPU**. *Hardware decoding failed* means Jellyfin's hardware acceleration did not work for this video; see the log for FFmpeg's message. |
-| Picture | The size of the picture sent to Hyperion, and for HDR video how it becomes SDR, for example `160×90, HDR10, tone mapped to SDR with tonemapx`. See [HDR and Dolby Vision](#hdr-and-dolby-vision). |
+| Picture | The size of the picture sent to Hyperion, and for HDR video how it becomes SDR, for example `160×90, HDR10, tone mapped to SDR with zscale`. See [HDR and Dolby Vision](#hdr-and-dolby-vision). |
 | Last problem | The most recent problem with its time, also after it was resolved (for example a Hyperion restart during the last movie). |
 
 ## Hyperion server

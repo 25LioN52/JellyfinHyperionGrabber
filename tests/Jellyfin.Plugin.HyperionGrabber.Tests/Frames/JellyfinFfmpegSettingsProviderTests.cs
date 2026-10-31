@@ -73,16 +73,18 @@ public class JellyfinFfmpegSettingsProviderTests
     }
 
     [Theory]
-    [InlineData(true, true, HdrToneMapper.Tonemapx)]
-    [InlineData(true, false, HdrToneMapper.Tonemapx)]
-    [InlineData(false, true, HdrToneMapper.Zscale)]
-    [InlineData(false, false, HdrToneMapper.None)]
-    public void GetSettings_PicksTheBestToneMapperJellyfinsFfmpegHas(bool tonemapx, bool zscale, HdrToneMapper expected)
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void GetSettings_SaysWhichToneMappingFiltersJellyfinsFfmpegHas(bool tonemapx, bool zscale)
     {
         _mediaEncoder.SupportsFilter("tonemapx").Returns(tonemapx);
         _mediaEncoder.SupportsFilter("zscale").Returns(zscale);
 
-        Assert.Equal(expected, Provider().GetSettings().ToneMapper);
+        var settings = Provider().GetSettings();
+
+        Assert.Equal((tonemapx, zscale), (settings.HasTonemapx, settings.HasZscale));
     }
 
     [Theory]

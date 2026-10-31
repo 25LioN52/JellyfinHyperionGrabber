@@ -27,7 +27,7 @@ The plugin decodes with the FFmpeg Jellyfin uses (**Dashboard → Playback → T
 
 | FFmpeg | HDR10, HDR10+, HLG | Dolby Vision profile 5 |
 | --- | --- | --- |
-| Jellyfin's bundled FFmpeg (jellyfin-ffmpeg 7, in every official package and Docker image) | Tone mapped (`tonemapx`) | Tone mapped with correct colors |
+| Jellyfin's bundled FFmpeg (jellyfin-ffmpeg 7, in every official package and Docker image) | Tone mapped (`zscale`) | Tone mapped with its Dolby Vision colors (`tonemapx`) |
 | Other builds with zimg (`zscale`) | Tone mapped | Wrong colors (green and purple) |
 | Other builds without zimg | Pale colors | Wrong colors |
 

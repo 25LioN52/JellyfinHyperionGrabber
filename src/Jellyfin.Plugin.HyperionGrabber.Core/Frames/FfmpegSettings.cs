@@ -23,8 +23,31 @@ public sealed record FfmpegSettings
     /// </summary>
     public IReadOnlyCollection<string> HardwareDecodingCodecs { get; init; } = [];
 
-    /// <summary>Gets the best HDR tone mapping filter the server's FFmpeg has.</summary>
-    public HdrToneMapper ToneMapper { get; init; }
+    /// <summary>Gets a value indicating whether the server's FFmpeg has Jellyfin's <c>tonemapx</c> filter.</summary>
+    public bool HasTonemapx { get; init; }
+
+    /// <summary>Gets a value indicating whether the server's FFmpeg has the <c>zscale</c> (zimg) filter.</summary>
+    public bool HasZscale { get; init; }
+
+    /// <summary>
+    /// Returns the filter that maps a video to SDR. HDR10 and HLG prefer <c>zscale</c>: <c>tonemapx</c> darkens the
+    /// picture and turns saturated reds toward magenta (it drops their green). Dolby Vision profile 5 prefers
+    /// <c>tonemapx</c>, the only one that applies its metadata.
+    /// </summary>
+    /// <param name="range">The video's dynamic range.</param>
+    /// <returns>The filter; <see cref="HdrToneMapper.None"/> for SDR, or when FFmpeg has neither.</returns>
+    public HdrToneMapper GetToneMapper(VideoDynamicRange range)
+    {
+        if (range == VideoDynamicRange.Sdr)
+        {
+            return HdrToneMapper.None;
+        }
+
+        var (first, firstAvailable, second, secondAvailable) = range == VideoDynamicRange.DolbyVision
+            ? (HdrToneMapper.Tonemapx, HasTonemapx, HdrToneMapper.Zscale, HasZscale)
+            : (HdrToneMapper.Zscale, HasZscale, HdrToneMapper.Tonemapx, HasTonemapx);
+        return firstAvailable ? first : secondAvailable ? second : HdrToneMapper.None;
+    }
 
     /// <summary>
     /// Returns the acceleration to use for a video codec: hardware only when the administrator enabled hardware

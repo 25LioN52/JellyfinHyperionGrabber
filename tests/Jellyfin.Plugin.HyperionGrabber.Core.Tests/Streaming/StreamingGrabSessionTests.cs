@@ -855,19 +855,19 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     public async Task Start_HdrVideo_IsTonemappedWithTheServersBestFilter()
     {
         _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.Hdr10 });
-        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Tonemapx };
+        _ffmpeg = _ffmpeg with { HasTonemapx = true, HasZscale = true };
 
         var session = await StartStreamingAsync();
 
-        Assert.Equal((VideoDynamicRange.Hdr10, HdrToneMapper.Tonemapx), (Source.Options.DynamicRange, Source.Options.ToneMapper));
-        Assert.Equal(new PictureFormat(160, 90, VideoDynamicRange.Hdr10, HdrToneMapper.Tonemapx), session.GetStatus().Picture);
-        AssertLogged(LogLevel.Information, "Hdr10 video: tone mapping it to SDR with Tonemapx");
+        Assert.Equal((VideoDynamicRange.Hdr10, HdrToneMapper.Zscale), (Source.Options.DynamicRange, Source.Options.ToneMapper));
+        Assert.Equal(new PictureFormat(160, 90, VideoDynamicRange.Hdr10, HdrToneMapper.Zscale), session.GetStatus().Picture);
+        AssertLogged(LogLevel.Information, "Hdr10 video: tone mapping it to SDR with Zscale");
     }
 
     [Fact]
     public async Task Start_SdrVideo_ShowsThePictureWithoutToneMapping()
     {
-        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Tonemapx };
+        _ffmpeg = _ffmpeg with { HasTonemapx = true, HasZscale = true };
 
         var session = await StartStreamingAsync();
 
@@ -890,7 +890,7 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
     public async Task Start_DolbyVisionProfile5WithZscale_WarnsThatOnlyTonemapxGetsTheColorsRight()
     {
         _video = VideoInputResult.Supported(new VideoInput("file:/media/movie.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.DolbyVision });
-        _ffmpeg = _ffmpeg with { ToneMapper = HdrToneMapper.Zscale };
+        _ffmpeg = _ffmpeg with { HasZscale = true };
 
         var session = await StartStreamingAsync();
 
