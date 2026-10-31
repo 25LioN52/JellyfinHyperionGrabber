@@ -65,11 +65,12 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         Assert.True(orange.R >= 150 && orange.G <= orange.R / 2 && orange.B <= orange.R / 3, $"Orange came out as {orange}.");
     }
 
-    [Theory]
-    [InlineData(HdrToneMapper.Tonemapx)]
-    [InlineData(HdrToneMapper.Zscale)]
-    public async Task Hdr10_KeepsTheHueOfOrdinaryColors(HdrToneMapper toneMapper)
+    [Fact]
+    public async Task Hdr10_KeepsTheHueOfOrdinaryColors()
     {
+        // The filter the plugin picks for HDR10 when FFmpeg has both, as Jellyfin's does. tonemapx failed this
+        // (0.8.0): crimson (200, 30, 50) came out as (148, 0, 46), Spider-Man's red as cherry.
+        var toneMapper = new FfmpegSettings { FfmpegPath = "ffmpeg", HasTonemapx = true, HasZscale = true }.GetToneMapper(VideoDynamicRange.Hdr10);
         var path = await FfmpegWithAsync(toneMapper);
         var clip = await ffmpeg.GetSdrColorsAsHdr10ClipAsync();
         Assert.False(clip is null && FfmpegFixture.IsRequired, "Could not make the HDR10 clip of ordinary colors.");
@@ -83,7 +84,7 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         for (var i = 0; i < colors.Length; i++)
         {
             var expected = FfmpegFixture.SdrColors[i];
-            Assert.True(HueDistance(expected, colors[i]) <= 12, $"{expected} came out as {colors[i]}: hue {Hue(expected):0}° became {Hue(colors[i]):0}°. All: {report}");
+            Assert.True(HueDistance(expected, colors[i]) <= 5, $"{expected} came out as {colors[i]}: hue {Hue(expected):0}° became {Hue(colors[i]):0}°. All: {report}");
             Assert.True(Saturation(colors[i]) >= Saturation(expected) * 0.6, $"{expected} came out pale: {colors[i]}. All: {report}");
         }
     }

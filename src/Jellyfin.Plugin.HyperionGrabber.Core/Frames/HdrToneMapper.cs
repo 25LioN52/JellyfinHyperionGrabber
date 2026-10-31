@@ -9,10 +9,11 @@ public enum HdrToneMapper
     None = 0,
 
     /// <summary>Jellyfin's <c>tonemapx</c> (jellyfin-ffmpeg), what Jellyfin's own software tone mapping uses: BT.2390, and
-    /// it applies Dolby Vision metadata, so profile 5 gets its colors.</summary>
+    /// it applies Dolby Vision metadata, so profile 5 gets its colors. Used for profile 5 only: it turns saturated reds
+    /// toward magenta (ADR 0012).</summary>
     Tonemapx,
 
-    /// <summary><c>zscale</c> (zimg) with FFmpeg's <c>tonemap</c> filter (Möbius): HDR10 and HLG; Dolby Vision profile 5
-    /// keeps wrong colors.</summary>
+    /// <summary><c>zscale</c> (zimg) with FFmpeg's <c>tonemap</c> filter (Möbius): HDR10 and HLG with their hues kept;
+    /// Dolby Vision profile 5 keeps wrong colors.</summary>
     Zscale,
 }
