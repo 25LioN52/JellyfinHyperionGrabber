@@ -140,7 +140,7 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
     /// <summary>HSV hue in degrees.</summary>
     private static double Hue((byte R, byte G, byte B) color)
     {
-        double r = color.R, g = color.G, b = color.B;
+        int r = color.R, g = color.G, b = color.B;
         var max = Math.Max(r, Math.Max(g, b));
         var delta = max - Math.Min(r, Math.Min(g, b));
         if (delta == 0)
@@ -148,7 +148,7 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
             return 0;
         }
 
-        var hue = max == r ? (g - b) / delta : max == g ? 2 + ((b - r) / delta) : 4 + ((r - g) / delta);
+        var hue = max == r ? (g - b) / (double)delta : max == g ? 2 + ((b - r) / (double)delta) : 4 + ((r - g) / (double)delta);
         return ((hue * 60) + 360) % 360;
     }
 

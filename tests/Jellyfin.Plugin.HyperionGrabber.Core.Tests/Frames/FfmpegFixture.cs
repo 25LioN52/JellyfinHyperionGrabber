@@ -113,7 +113,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// </summary>
     public async Task<string?> GetSdrColorsAsHdr10ClipAsync()
     {
-        var path = Path.Combine(_directory, "sdr-colors-pq.mkv");
+        var path = Path.Join(_directory, "sdr-colors-pq.mkv");
         if (File.Exists(path))
         {
             return path;
