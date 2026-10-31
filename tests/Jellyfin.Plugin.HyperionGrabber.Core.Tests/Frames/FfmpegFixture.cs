@@ -35,6 +35,12 @@ public sealed class FfmpegFixture : IAsyncLifetime
     /// </summary>
     public static readonly (int Y, int Cb, int Cr)[] HdrCodes = [(64, 512, 512), (512, 512, 512), (400, 400, 700)];
 
+    /// <summary>
+    /// Ordinary SDR colors for the hue test: Spider-Man's orange-brown, a crimson, skin, a green, a blue, a yellow.
+    /// </summary>
+    public static readonly (byte R, byte G, byte B)[] SdrColors =
+        [(150, 60, 30), (200, 30, 50), (220, 170, 140), (40, 160, 60), (60, 120, 200), (220, 200, 40)];
+
     private static readonly string[] ColorNames = ["red", "lime", "blue", "white"];
 
     private readonly ConcurrentDictionary<(string Path, string Filter), Task<bool>> _filters = new();
@@ -98,6 +104,44 @@ public sealed class FfmpegFixture : IAsyncLifetime
         }
 
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Returns a lossless HDR10 clip of ordinary colors (<see cref="SdrColors"/>, one per second), converted from SDR
+    /// BT.709 to PQ BT.2020 the standard way (SDR white at 100 nits), or <see langword="null"/> when no FFmpeg has zscale.
+    /// Tone mapping it back must give the same hues.
+    /// </summary>
+    public async Task<string?> GetSdrColorsAsHdr10ClipAsync()
+    {
+        var path = Path.Combine(_directory, "sdr-colors-pq.mkv");
+        if (File.Exists(path))
+        {
+            return path;
+        }
+
+        if (await FindFfmpegWithFilterAsync("zscale") is not { } ffmpeg)
+        {
+            return null;
+        }
+
+        var arguments = new List<string> { "-nostdin", "-hide_banner", "-loglevel", "error", "-y" };
+        foreach (var (r, g, b) in SdrColors)
+        {
+            arguments.AddRange(["-f", "lavfi", "-i", $"color=c=0x{r:X2}{g:X2}{b:X2}:s={ClipWidth}x{ClipHeight}:r=25:d=1"]);
+        }
+
+        var inputs = string.Concat(Enumerable.Range(0, SdrColors.Length).Select(i => $"[{i}:v]"));
+        arguments.AddRange(
+        [
+            "-filter_complex",
+            $"{inputs}concat=n={SdrColors.Length}:v=1:a=0,format=gbrpf32le,"
+                + "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=gbr,"
+                + "zscale=t=linear:npl=100,zscale=p=bt2020,zscale=t=smpte2084:npl=100:m=bt2020nc:r=tv,format=yuv420p10le",
+            "-c:v", "ffv1", "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc", "-color_range", "tv",
+            "-g", "25", path,
+        ]);
+        var (exitCode, _) = await RunAsync(ffmpeg, arguments);
+        return exitCode == 0 && File.Exists(path) ? path : null;
     }
 
     /// <summary>
