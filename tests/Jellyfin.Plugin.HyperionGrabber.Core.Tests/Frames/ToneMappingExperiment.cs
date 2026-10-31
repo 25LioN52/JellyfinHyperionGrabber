@@ -20,19 +20,15 @@ public class ToneMappingExperiment(FfmpegFixture ffmpeg) : IClassFixture<FfmpegF
         var clip = await ffmpeg.GetSdrColorsAsHdr10ClipAsync();
         Assert.SkipWhen(path is null || clip is null, "No tonemapx.");
 
+        const string Tm = "tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p";
         var variants = new (string Name, string[] Global, string Filter)[]
         {
-            ("base", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"),
-            ("cpuflags0", ["-cpuflags", "0"], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"),
-            ("out10", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p10le"),
-            ("p010-nv12", [], $"format=p010le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=nv12"),
-            ("p010-p010", [], $"format=p010le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=p010le"),
-            ("nopeak", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:t=bt709:m=bt709:p=bt709:format=yuv420p"),
-            ("none", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=none:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"),
-            ("clip", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=clip:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p"),
-            ("keep2020", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt2020:format=yuv420p"),
-            ("full-res", [], $"format=yuv420p10le,{Tags},tonemapx=tonemap=bt2390:desat=0:peak=100:t=bt709:m=bt709:p=bt709:format=yuv420p,scale=160:90:flags=area"),
-            ("zscale", [], $"format=yuv420p10le,{Tags},zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=mobius:desat=0:peak=10,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"),
+            ("base", [], $"format=yuv420p10le,{Tags},{Tm}"),
+            ("tag709", [], $"format=yuv420p10le,{Tags},{Tm},setparams=colorspace=bt709:range=tv"),
+            ("in709", [], $"format=yuv420p10le,{Tags},{Tm},scale=in_color_matrix=bt709:in_range=tv"),
+            ("in2020", [], $"format=yuv420p10le,{Tags},{Tm},scale=in_color_matrix=bt2020:in_range=tv"),
+            ("in601", [], $"format=yuv420p10le,{Tags},{Tm},scale=in_color_matrix=bt601:in_range=tv"),
+            ("info", ["-loglevel", "info"], $"format=yuv420p10le,{Tags},{Tm},showinfo"),
         };
 
         foreach (var (name, global, filter) in variants)
@@ -46,7 +42,7 @@ public class ToneMappingExperiment(FfmpegFixture ffmpeg) : IClassFixture<FfmpegF
     private static async Task<string> ReadAsync(string ffmpegPath, string clip, string[] global, string filter)
     {
         var startInfo = new ProcessStartInfo(ffmpegPath) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var argument in global.Concat(["-nostdin", "-hide_banner", "-loglevel", "error", "-i", clip, "-map", "0:v:0", "-vf", filter, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]))
+        foreach (var argument in global.Concat(["-nostdin", "-hide_banner", "-i", clip, "-map", "0:v:0", "-vf", filter, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -72,6 +68,7 @@ public class ToneMappingExperiment(FfmpegFixture ffmpeg) : IClassFixture<FfmpegF
             results.Add(offset + 2 < output.Count ? $"({output[offset]},{output[offset + 1]},{output[offset + 2]})" : "-");
         }
 
-        return string.Join(" ", results) + (error.Length > 0 ? " ERR: " + error.Trim() : string.Empty);
+        var info = string.Join(" | ", error.Split(Environment.NewLine[^1]).Where(line => line.Contains("color_range", StringComparison.Ordinal) || line.Contains("Error", StringComparison.Ordinal)).Take(2));
+        return string.Join(" ", results) + " INFO: " + info;
     }
 }

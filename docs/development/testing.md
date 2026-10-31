@@ -41,7 +41,9 @@ throttling and that the process is killed.
 - `FfmpegToneMappingTests` decode a lossless 10-bit BT.2020 clip, tagged PQ and HLG, with exact code values (`geq`,
   FFV1): one second each of black, a gray at about 100 nits and a saturated orange. Untreated, the gray comes out at
   130 of 255 and the orange as a pale brown; tone mapped, black stays black, the gray is above 180 and the orange
-  saturated. They run once per tone mapper (`tonemapx`, `zscale`) with the first FFmpeg that has it.
+  saturated. `Hdr10_KeepsTheHueOfOrdinaryColors` converts ordinary SDR colors (orange-brown, crimson, skin, green,
+  blue, yellow) to HDR10 with zscale and checks that tone mapping gives the same hues back. They run once per tone
+  mapper (`tonemapx`, `zscale`) with the first FFmpeg that has it.
   `HYPERION_GRABBER_JELLYFIN_FFMPEG` names Jellyfin's FFmpeg, the only one with `tonemapx`; CI on Linux installs
   jellyfin-ffmpeg from Jellyfin's APT repository next to the system FFmpeg, sets it, and then requires both tone
   mappers to be tested.

@@ -125,7 +125,7 @@ public class FfmpegFrameSourceOptionsTests
     [Fact]
     public void Create_TakesTheDynamicRangeFromTheVideoAndTheToneMapperFromTheSettings()
     {
-        var settings = new FfmpegSettings { FfmpegPath = "ffmpeg", ToneMapper = HdrToneMapper.Tonemapx };
+        var settings = new FfmpegSettings { FfmpegPath = "ffmpeg", HasTonemapx = true, HasZscale = true };
         var video = new VideoInput("/media/a.mkv", 3840, 2160, "hevc") { DynamicRange = VideoDynamicRange.DolbyVision };
 
         var options = FfmpegFrameSourceOptions.Create(settings, video, TimeSpan.Zero);

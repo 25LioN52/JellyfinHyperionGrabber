@@ -171,7 +171,7 @@ public sealed record FfmpegFrameSourceOptions
             HardwareAcceleration = acceleration,
             HardwareDevice = acceleration == HardwareAcceleration.None ? null : settings.HardwareDevice,
             DynamicRange = input.DynamicRange,
-            ToneMapper = settings.ToneMapper,
+            ToneMapper = settings.GetToneMapper(input.DynamicRange),
         };
     }
 }
