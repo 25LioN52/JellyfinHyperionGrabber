@@ -60,12 +60,12 @@ public class HyperionClientTests
     [Fact]
     public async Task ConnectAsync_WhenNothingListens_ThrowsConnectionException()
     {
-        var port = TestHelpers.GetUnusedPort();
+        using var closed = ClosedPort.Reserve();
 
         var exception = await Assert.ThrowsAsync<HyperionConnectionException>(
-            () => HyperionClient.ConnectAsync(new HyperionClientOptions { Host = "127.0.0.1", Port = port }, NullLogger.Instance, Ct));
+            () => HyperionClient.ConnectAsync(new HyperionClientOptions { Host = "127.0.0.1", Port = closed.Port }, NullLogger.Instance, Ct));
 
-        Assert.Contains(port.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
+        Assert.Contains(closed.Port.ToString(CultureInfo.InvariantCulture), exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

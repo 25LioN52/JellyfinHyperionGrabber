@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -64,7 +62,8 @@ public class HyperionGrabberControllerTests
     [Fact]
     public async Task TestConnection_UnreachableServer_ReturnsFailureWithMessage()
     {
-        var request = new HyperionTargetRequest { Host = "127.0.0.1", Port = GetUnusedPort() };
+        using var closed = ClosedPort.Reserve();
+        var request = new HyperionTargetRequest { Host = "127.0.0.1", Port = closed.Port };
 
         var response = Unwrap<OkObjectResult>(await _controller.TestConnection(request, Ct));
 
@@ -193,15 +192,6 @@ public class HyperionGrabberControllerTests
     private static HyperionTestResponse Unwrap<TResult>(ActionResult<HyperionTestResponse> result)
         where TResult : ObjectResult
         => Assert.IsType<HyperionTestResponse>(Assert.IsType<TResult>(result.Result).Value);
-
-    private static int GetUnusedPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
 
     private sealed class FakeStatusSource : IPlaybackStatusSource
     {

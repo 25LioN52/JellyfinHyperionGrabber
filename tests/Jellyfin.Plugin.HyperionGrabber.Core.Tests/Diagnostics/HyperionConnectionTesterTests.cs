@@ -32,12 +32,12 @@ public class HyperionConnectionTesterTests
     [Fact]
     public async Task TestConnectionAsync_ReportsUnreachableServer()
     {
-        var port = TestHelpers.GetUnusedPort();
+        using var closed = ClosedPort.Reserve();
 
-        var result = await Tester.TestConnectionAsync(new HyperionClientOptions { Host = "127.0.0.1", Port = port }, Ct);
+        var result = await Tester.TestConnectionAsync(new HyperionClientOptions { Host = "127.0.0.1", Port = closed.Port }, Ct);
 
         Assert.False(result.Success);
-        Assert.Contains(port.ToString(CultureInfo.InvariantCulture), result.Message, StringComparison.Ordinal);
+        Assert.Contains(closed.Port.ToString(CultureInfo.InvariantCulture), result.Message, StringComparison.Ordinal);
     }
 
     [Fact]

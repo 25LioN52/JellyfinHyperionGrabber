@@ -1,7 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Net;
-using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace Jellyfin.Plugin.HyperionGrabber.TestSupport;
@@ -24,15 +22,6 @@ public static class TestHelpers
 
             await Task.Delay(10);
         }
-    }
-
-    public static int GetUnusedPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
     }
 
     public static byte[] RandomBytes(int length, int seed)
