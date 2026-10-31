@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -683,7 +684,9 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
 
         clearing.SetResult();
         await TestHelpers.WaitUntilAsync(() => _connects == 2);
-        await TickAsync(second);
+
+        // The connect completes on another thread, maybe after the next tick; the first tick after that takes it.
+        await TickUntilAsync(second, () => second.GetStatus().Phase == GrabSessionPhase.Streaming);
 
         Assert.NotSame(firstConnection, _connection);
         Assert.Equal([2], _connection.Images);
@@ -1078,6 +1081,18 @@ public sealed class StreamingGrabSessionTests : IAsyncDisposable
         var before = session.Ticks;
         _time.Advance(time);
         await TestHelpers.WaitUntilAsync(() => session.Ticks > before);
+    }
+
+    /// <summary>Ticks until <paramref name="condition"/> holds, for work another thread finishes between ticks; fails
+    /// after 5 s like <see cref="TestHelpers.WaitUntilAsync"/>.</summary>
+    private async Task TickUntilAsync(StreamingGrabSession session, Func<bool> condition)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (!condition())
+        {
+            Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), "Condition not met within 5 s.");
+            await TickAsync(session);
+        }
     }
 
     private PlaybackState State(TimeSpan position, bool paused = false) => new()
