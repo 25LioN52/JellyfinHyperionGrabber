@@ -68,7 +68,7 @@ public class ToneMappingExperiment(FfmpegFixture ffmpeg) : IClassFixture<FfmpegF
         var results = new List<string>();
         for (var second = 0; second < FfmpegFixture.SdrColors.Length; second++)
         {
-            var offset = (((second * 25) + 12) * frameLength) + ((45 * 160) + 80) * 3;
+            var offset = (((second * 25) + 12) * frameLength) + (((45 * 160) + 80) * 3);
             results.Add(offset + 2 < output.Count ? $"({output[offset]},{output[offset + 1]},{output[offset + 2]})" : "-");
         }
 
