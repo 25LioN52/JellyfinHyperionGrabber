@@ -65,13 +65,16 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         Assert.True(orange.R >= 150 && orange.G <= orange.R / 2 && orange.B <= orange.R / 3, $"Orange came out as {orange}.");
     }
 
-    [Fact]
-    public async Task Hdr10_KeepsTheHueOfOrdinaryColors()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Hdr10_KeepsTheHueOfOrdinaryColors(bool jellyfinFfmpeg)
     {
         // The filter the plugin picks for HDR10 when FFmpeg has both, as Jellyfin's does. tonemapx failed this
-        // (0.8.0): crimson (200, 30, 50) came out as (148, 0, 46), Spider-Man's red as cherry.
+        // (0.8.0): crimson (200, 30, 50) came out as (148, 0, 46), Spider-Man's red as cherry. Also checked with
+        // Jellyfin's FFmpeg, the one the plugin runs on a server.
         var toneMapper = new FfmpegSettings { FfmpegPath = "ffmpeg", HasTonemapx = true, HasZscale = true }.GetToneMapper(VideoDynamicRange.Hdr10);
-        var path = await FfmpegWithAsync(toneMapper);
+        var path = jellyfinFfmpeg ? await JellyfinFfmpegWithAsync(toneMapper) : await FfmpegWithAsync(toneMapper);
         var clip = await ffmpeg.GetSdrColorsAsHdr10ClipAsync();
         Assert.False(clip is null && FfmpegFixture.IsRequired, "Could not make the HDR10 clip of ordinary colors.");
         Assert.SkipWhen(clip is null, "No FFmpeg with zscale to make the HDR10 clip of ordinary colors.");
@@ -164,6 +167,8 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         return max == 0 ? 0 : (max - Math.Min(color.R, Math.Min(color.G, color.B))) / (double)max;
     }
 
+    private static string FilterOf(HdrToneMapper toneMapper) => toneMapper == HdrToneMapper.Tonemapx ? "tonemapx" : "zscale";
+
     /// <summary>Returns the middle pixel of the frame in the middle of each second.</summary>
     private static async Task<(byte R, byte G, byte B)[]> ReadMiddleOfEachSecondAsync(
         string ffmpegPath, string inputPath, VideoDynamicRange range, HdrToneMapper toneMapper, int seconds)
@@ -203,10 +208,20 @@ public class FfmpegToneMappingTests(FfmpegFixture ffmpeg) : IClassFixture<Ffmpeg
         return (colors[0], colors[1], colors[2]);
     }
 
+    /// <summary>Returns Jellyfin's FFmpeg, which must have the tone mapper's filter; skips when it is not configured.</summary>
+    private async Task<string> JellyfinFfmpegWithAsync(HdrToneMapper toneMapper)
+    {
+        ffmpeg.SkipIfUnavailable();
+        Assert.SkipWhen(ffmpeg.JellyfinFfmpegPath is null, "Set HYPERION_GRABBER_JELLYFIN_FFMPEG to Jellyfin's FFmpeg to test it.");
+        var filter = FilterOf(toneMapper);
+        Assert.True(await ffmpeg.HasFilterAsync(ffmpeg.JellyfinFfmpegPath!, filter), $"Jellyfin's FFmpeg has no {filter} filter.");
+        return ffmpeg.JellyfinFfmpegPath!;
+    }
+
     private async Task<string> FfmpegWithAsync(HdrToneMapper toneMapper)
     {
         ffmpeg.SkipIfUnavailable();
-        var filter = toneMapper == HdrToneMapper.Tonemapx ? "tonemapx" : "zscale";
+        var filter = FilterOf(toneMapper);
         var path = await ffmpeg.FindFfmpegWithFilterAsync(filter);
 
         // Only Jellyfin's FFmpeg has tonemapx; CI installs it and requires every tone mapper to be tested.

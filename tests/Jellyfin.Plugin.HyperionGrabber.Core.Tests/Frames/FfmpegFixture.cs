@@ -173,7 +173,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     {
         foreach (var path in new[] { FfmpegPath, JellyfinFfmpegPath })
         {
-            if (path is not null && await _filters.GetOrAdd((path, filter), key => HasFilterAsync(key.Path, key.Filter)))
+            if (path is not null && await HasFilterAsync(path, filter))
             {
                 return path;
             }
@@ -181,6 +181,10 @@ public sealed class FfmpegFixture : IAsyncLifetime
 
         return null;
     }
+
+    /// <summary>Returns whether an FFmpeg has a filter (asked once per FFmpeg and filter).</summary>
+    public Task<bool> HasFilterAsync(string ffmpegPath, string filter)
+        => _filters.GetOrAdd((ffmpegPath, filter), key => ListsFilterAsync(key.Path, key.Filter));
 
     private static string? ExistingFile(string? path) => !string.IsNullOrEmpty(path) && File.Exists(path) ? path : null;
 
@@ -200,7 +204,7 @@ public sealed class FfmpegFixture : IAsyncLifetime
     }
 
     /// <summary>Lists FFmpeg's filters: one per line, flags first, for example <c> .S zscale  V-&gt;V  ...</c>.</summary>
-    private static async Task<bool> HasFilterAsync(string ffmpegPath, string filter)
+    private static async Task<bool> ListsFilterAsync(string ffmpegPath, string filter)
     {
         var (exitCode, output) = await RunAsync(ffmpegPath, ["-hide_banner", "-filters"]);
         return exitCode == 0 && Regex.IsMatch(output, @"^\s*\S+\s+" + Regex.Escape(filter) + @"\s", RegexOptions.Multiline);
