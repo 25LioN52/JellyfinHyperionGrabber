@@ -33,7 +33,7 @@ Tests use xUnit v3 on Microsoft.Testing.Platform (`global.json`), so filters are
 | `src/Jellyfin.Plugin.HyperionGrabber.Core` | Host-independent engine: Hyperion FlatBuffers client, test pattern, later frame pipeline and sync. **No Jellyfin references.** |
 | `src/Jellyfin.Plugin.HyperionGrabber` | Thin Jellyfin adapter: `Plugin`, DI registration, admin API, config page (`Configuration/configPage.html/.js`). |
 | `tests/*.Core.Tests`, `tests/*.Tests` | Unit and integration tests for each project; `Core.Tests/EndToEnd` runs against a real Hyperion.ng or HyperHDR (`tests/e2e/hyperion-ng`, `tests/e2e/hyperhdr`; skipped unless `HYPERION_GRABBER_E2E_HOST` is set). |
-| `tests/*.TestSupport` | `FakeHyperionServer` (decodes with the official FlatBuffers runtime + verifier), `RecordingSink`, `RecordingGrabSessionFactory`, `TestHelpers`. |
+| `tests/*.TestSupport` | `FakeHyperionServer` (decodes with the official FlatBuffers runtime + verifier), `ClosedPort` (refuses connections), `RecordingSink`, `RecordingGrabSessionFactory`, `TestHelpers`. |
 | `build/` | `plugin.json` (catalog metadata), `package.ps1` (zips), `New-PluginManifest.ps1` (repository manifest). |
 | `docs/` | MkDocs site: user guide, developer guide, ADRs. Published to GitHub Pages with `manifest.json`. |
 

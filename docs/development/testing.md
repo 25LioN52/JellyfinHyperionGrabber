@@ -141,7 +141,8 @@ against the pause keep-alive.
 - Fixed seeds for random data.
 - Network only on loopback with OS-assigned ports (the end-to-end tests use the container's mapped ports). For a
   server that is not reachable, use `ClosedPort.Reserve()`: it keeps the port bound but not listening for the whole
-  test, so no other test's server or outgoing connection can take it in between.
+  test, so no other test's server or outgoing connection can take it in between. `ClosedPortTests` check on Windows
+  and Linux that it refuses connections and that no listener can bind it.
 - Pass `TestContext.Current.CancellationToken`.
 
 ## Planned
