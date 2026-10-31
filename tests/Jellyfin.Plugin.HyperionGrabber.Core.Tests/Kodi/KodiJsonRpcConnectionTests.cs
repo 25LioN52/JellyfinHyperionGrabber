@@ -71,12 +71,12 @@ public sealed class KodiJsonRpcConnectionTests : IAsyncDisposable
     [Fact]
     public async Task ConnectAsync_NothingListens_ThrowsKodiException()
     {
-        var port = TestHelpers.GetUnusedPort();
+        using var closed = ClosedPort.Reserve();
 
         var exception = await Assert.ThrowsAsync<KodiException>(
-            () => KodiJsonRpcConnection.ConnectAsync("127.0.0.1", port, Timeout, _ => { }, TimeProvider.System, Ct));
+            () => KodiJsonRpcConnection.ConnectAsync("127.0.0.1", closed.Port, Timeout, _ => { }, TimeProvider.System, Ct));
 
-        Assert.Contains($"127.0.0.1:{port}", exception.Message, StringComparison.Ordinal);
+        Assert.Contains($"127.0.0.1:{closed.Port}", exception.Message, StringComparison.Ordinal);
     }
 
     private Task<KodiJsonRpcConnection> ConnectAsync()

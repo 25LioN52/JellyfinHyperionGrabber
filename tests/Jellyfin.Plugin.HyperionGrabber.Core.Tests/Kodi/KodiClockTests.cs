@@ -115,7 +115,8 @@ public sealed class KodiClockTests : IAsyncDisposable
     [Fact]
     public async Task KodiNotReachable_SaysHowToTurnOnRemoteControl()
     {
-        var clock = KodiClock.Start(new KodiClockOptions("127.0.0.1", TestHelpers.GetUnusedPort(), ItemId), _time, _logger);
+        using var closed = ClosedPort.Reserve();
+        var clock = KodiClock.Start(new KodiClockOptions("127.0.0.1", closed.Port, ItemId), _time, _logger);
         _clock = clock;
 
         // The clock sets its description, then logs, then counts the retry: wait for the count, not the description.

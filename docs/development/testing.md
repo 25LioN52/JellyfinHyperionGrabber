@@ -14,7 +14,7 @@
 | --- | --- |
 | `Core.Tests` | Codec, reply parser, client against the fake server, options validation, test pattern, player, tester, FFmpeg command lines and the frame source against a real FFmpeg, playback monitor, streaming session (fake time and frames), end-to-end streaming (real FFmpeg → fake server) and, in `EndToEnd/`, the client against a real Hyperion.ng and HyperHDR |
 | `Tests` | Plugin wiring: ids and resources consistent across C#/HTML/JS/`plugin.json`, configuration XML compatibility, controller validation and behaviour, media source resolution |
-| `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `TestHelpers` (shared, not a test project) |
+| `TestSupport` | `FakeHyperionServer`, `RecordingSink`, `RecordingGrabSessionFactory`, `OfficialHyperionCodec`, `ClosedPort`, `TestHelpers` (shared, not a test project) |
 
 ## The fake Hyperion server
 
@@ -139,7 +139,9 @@ against the pause keep-alive.
 
 - No fixed sleeps for synchronization (`TestHelpers.WaitUntilAsync`, awaitable fake server, `FakeTimeProvider`).
 - Fixed seeds for random data.
-- Network only on loopback with OS-assigned ports (the end-to-end tests use the container's mapped ports).
+- Network only on loopback with OS-assigned ports (the end-to-end tests use the container's mapped ports). For a
+  server that is not reachable, use `ClosedPort.Reserve()`: it keeps the port bound but not listening for the whole
+  test, so no other test's server or outgoing connection can take it in between.
 - Pass `TestContext.Current.CancellationToken`.
 
 ## Planned
